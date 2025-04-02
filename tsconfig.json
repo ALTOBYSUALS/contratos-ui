@@ -18,8 +18,11 @@
         "name": "next"
       }
     ],
+    // --- AÑADIR ESTA LÍNEA ---
+    "baseUrl": ".",
+    // --------------------------
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"] // Esto está bien si tus componentes están en ./components/...
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
