@@ -13,17 +13,19 @@
     "isolatedModules": true,
     "jsx": "preserve",
     "incremental": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./*"],
+      "@services/*": ["services/*"],
+      "@components/*": ["components/*"],
+      "@api/*": ["app/api/*"],
+      "@app/*": ["app/*"]
+    },
     "plugins": [
       {
         "name": "next"
       }
-    ],
-    // --- AÑADIR ESTA LÍNEA ---
-    "baseUrl": ".",
-    // --------------------------
-    "paths": {
-      "@/*": ["./*"] // Esto está bien si tus componentes están en ./components/...
-    }
+    ]
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
   "exclude": ["node_modules"]
