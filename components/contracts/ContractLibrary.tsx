@@ -236,7 +236,7 @@ const ContractLibrary = () => { // <--- Inicio del componente
                 setSentContracts(sentContractsData.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
 
                 console.log(">>> Initial Data OK:", { templates: templatesData.length, clients: clientsDataProcessed.length, sent: sentContractsData.length });
-            } catch (err: any) {
+            } catch (err: unknown) {
                 setError(err.message);
                 console.error(">>> Initial Fetch Error:", err);
                 toast.error("Error cargando datos iniciales", { description: err.message });
@@ -695,7 +695,7 @@ const ContractLibrary = () => { // <--- Inicio del componente
             toast.success("Plantilla Subida y Guardada", { description: `"${title}" añadida a la biblioteca.` });
             // Optionally select the new template and go to preview (or stay in library)
             // setSelectedContract(savedTemplate); setEditedContent(savedTemplate.content); setStep(1);
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error("Error saving uploaded template:", err);
             toast.error("Error al guardar plantilla subida", { description: err.message });
             // Handle potential rollback or cleanup if needed
@@ -761,7 +761,7 @@ const ContractLibrary = () => { // <--- Inicio del componente
                  }
             }
 
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error("Error procesando archivo:", error);
             toast.error("Error al procesar archivo", { id: toastId, description: error.message });
 
@@ -933,7 +933,7 @@ const ContractLibrary = () => { // <--- Inicio del componente
             pdf.save(filename);
             toast.success("PDF Descargado", { id: toastId, description: `${filename} (Estilo simplificado)` });
 
-        } catch (e: any) {
+        } catch (e: unknown) {
             console.error("Error generando PDF manual:", e);
             toast.error("Error al generar PDF", { id: toastId, description: `Ocurrió un error: ${e.message}` });
         } finally {
@@ -1142,7 +1142,7 @@ const ContractLibrary = () => { // <--- Inicio del componente
             document.body.removeChild(a);
 
             toast.success("Word Descargado", { id: toastId, description: `${filename}` });
-        } catch (e: any) {
+        } catch (e: unknown) {
             console.error("Error generando Word:", e);
             toast.error("Error al generar Word", { id: toastId, description: `Ocurrió un error: ${e.message}` });
         } finally {
@@ -1225,7 +1225,7 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
                 toast.dismiss(toastId); // O simplemente cierra el de "Generando..."
              }
         }
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error(`>>> Frontend: Error generating ${format}:`, error);
         toast.error(`Error al generar ${format}`, { id: toastId, description: error.message });
     } finally {
@@ -1283,7 +1283,7 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
             setEditingClient(null); // Clear editing state
             setEditedClientData({}); // Clear changes
 
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error("Error updating client:", err);
             toast.error("Error al actualizar cliente", { description: err.message });
         } finally {
@@ -1334,7 +1334,7 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
                 setEditingClient(null);
                  setEditedClientData({});
             }
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error("Error deleting client:", err);
             toast.error("Error al eliminar cliente", { description: err.message });
         } finally {
@@ -1382,7 +1382,7 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
             setNewTemplate(INITIAL_NEW_TEMPLATE_STATE); // Reset form
             setShowCreateTemplateModal(false); // Close modal
             toast.success("Plantilla Creada", { description: `"${savedTemplate.title}" creada.` });
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error("Error creating template:", err);
             toast.error("Error al crear plantilla", { description: err.message });
         } finally {
@@ -1434,7 +1434,7 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
                  }
              }
 
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error("Error updating template:", err);
             toast.error("Error al actualizar plantilla", { description: err.message });
         } finally {
@@ -1476,7 +1476,7 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
                 setShowEditTemplateModal(false);
                 setTemplateToEdit(null);
             }
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error("Error deleting template:", err);
             toast.error("Error al eliminar plantilla", { description: err.message });
         } finally {
@@ -1554,7 +1554,7 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
 
           toast.success('Contrato Finalizado por IA', { id: toastId, description: 'El contenido ha sido actualizado y refinado.' });
 
-        } catch (e: any) {
+        } catch (e: unknown) {
           console.error("Error finalizing contract with AI:", e);
           toast.error('Error IA', { id: toastId, description: e.message });
         } finally {
@@ -1617,7 +1617,7 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
                   if (document.getElementById(String(toastId))) toast.dismiss(toastId); // Dismiss if not already handled
             }
 
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error("AI generation or saving error:", error);
             toast.error("Error IA", { id: toastId, description: error.message || "No se pudo generar o guardar la plantilla." });
         } finally {
@@ -1641,7 +1641,7 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
              }
              setTemplates((prev) => [savedTemplate!, ...prev].sort((a, b) => a.title.localeCompare(b.title)));
              // Success toast is handled by the caller (generateAITemplate)
-         } catch (err: any) {
+         } catch (err: unknown) {
              console.error("Error saving template from data:", err);
              toast.error("Error al Guardar Plantilla IA", { description: err.message });
              savedTemplate = null; // Ensure null is returned on error
@@ -1755,7 +1755,7 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
              toast.success("¡Contrato Enviado!", { description: result.message || `"${selectedContract.title}" enviado correctamente.` });
              resetProcess(); // Go back to library view after successful send
 
-         } catch (err: any) {
+         } catch (err: unknown) {
              setError(`Error al enviar: ${err.message}`);
              toast.error("Error al Enviar Contrato", { description: err.message });
              console.error(">>> Send Error:", err);
