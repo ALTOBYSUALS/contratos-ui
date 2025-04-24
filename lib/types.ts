@@ -75,3 +75,39 @@ export interface ParticipantFinal { // Ya la tenías, asegúrate que tenga 'expo
   };
   
   // Puedes tener otros tipos exportados aquí también...
+  // En: lib/types.ts
+
+// ... (tus interfaces existentes: ParticipantFinal, GeneralContractData, Client, Template, SentContract) ...
+
+// --- AÑADIR ESTAS DEFINICIONES ---
+
+export interface SignerInfo {
+    id: string; // ID de la página Notion del firmante
+    name: string;
+    email: string;
+    signedAt: string | null; // Fecha ISO de firma o null si no ha firmado
+    // Coordenadas y tamaño para colocar la firma en el PDF
+    pageNumber: number;
+    posX: number;
+    posY: number; // Posición Y desde la parte SUPERIOR de la página (como se podría guardar en Notion)
+    signatureWidth: number;
+    signatureHeight: number;
+}
+
+export interface ContractInfo {
+    id: string; // ID de la página Notion del contrato
+    title: string;
+    pdfUrl_draft: string | null; // URL del PDF borrador en Vercel Blob
+    pdfUrl_signed?: string | null; // URL del PDF firmado (opcional, se rellena al final)
+    status?: string; // Estado actual del contrato (ej: 'EnviadoParaFirma', 'Firmado')
+}
+
+// Tipo que combina la información para la página de firma
+export type SignerAndContractDataResult = {
+    signer: SignerInfo;
+    contract: ContractInfo;
+};
+
+// --- FIN DE LAS DEFINICIONES A AÑADIR ---
+
+// Puedes tener otros tipos aquí...

@@ -70,11 +70,24 @@ HTML REFINADO:
       .trim()
 
     return NextResponse.json({ refinedContent: cleaned })
-  } catch (err: any) {
-    console.error('[AI Finalize‑Contract] ', err)
+  } catch (err: unknown) { // <-- Cambiado a unknown
+    console.error('[AI Finalize-Contract] Error:', err); // Loguea el error completo
+
+    let errorMessage = "Error al procesar la solicitud con IA"; // Mensaje por defecto
+
+    // Verifica si 'err' es un objeto Error para acceder a .message
+    if (err instanceof Error) {
+        errorMessage = err.message;
+    } else if (typeof err === 'string') {
+        // Si el error es solo un string
+        errorMessage = err;
+    }
+    // Puedes añadir más 'else if' para otros tipos si es necesario
+
+    // Devuelve el mensaje de error seguro
     return NextResponse.json(
-      { error: err.message ?? 'Error al procesar solicitud IA' },
+      { error: errorMessage }, // Usa la variable procesada
       { status: 500 }
-    )
+    );
   }
 }

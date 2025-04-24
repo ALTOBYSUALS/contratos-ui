@@ -68,10 +68,22 @@ export async function POST(req: NextRequest) {
             },
         });
 
-    } catch (error: any) {
-        console.error("API generate-pdf: Error generating PDF:", error);
+    } catch (error: unknown) { // <-- Cambiado a unknown
+        console.error("API generate-pdf: Error generating PDF:", error); // Log completo
+
+        let errorMessage = "Error desconocido al generar el PDF."; // Mensaje por defecto
+
+        if (error instanceof Error) {
+            errorMessage = error.message; // Seguro usar .message
+            // Si Puppeteer da errores más específicos, podrías intentar extraerlos aquí
+        } else if (typeof error === 'string') {
+            errorMessage = error;
+        }
+
+        // Devuelve el mensaje de error seguro
         return NextResponse.json(
-            { error: `Error al generar el PDF: ${error.message}` },
+            // Cambiado para usar solo un mensaje claro
+            { error: `Error al generar el PDF: ${errorMessage}` },
             { status: 500 }
         );
     }
