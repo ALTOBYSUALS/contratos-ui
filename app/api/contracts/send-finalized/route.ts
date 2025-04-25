@@ -5,7 +5,7 @@ import puppeteer from 'puppeteer';
 import { put } from '@vercel/blob';
 import { Resend } from 'resend';
 import { createNotionContract, createNotionSigner } from '@/services/notion';
-import type { Client, Template, SentContract, GeneralContractData, ParticipantFinal } from '@/lib/types'; // Asegúrate de importar de /lib
+import type {GeneralContractData, } from '@/lib/types'; // Asegúrate de importar de /lib
 
 // --- Configuración Inicial (Leer desde .env) ---
 // NOTA: Usa '!' solo si estás MUY seguro que la variable existe tras el check inicial
