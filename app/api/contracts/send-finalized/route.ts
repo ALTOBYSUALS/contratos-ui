@@ -126,7 +126,7 @@ export async function POST(request: NextRequest) {
             const signatureWidth = 150; const signatureHeight = 50;
             const posX = 72; // Margen izquierdo
             // Calcula Y desde abajo para pdf-lib: Margen Inferior + espacio entre firmas + altura firma
-            const posYFromBottom = 72 + (index * (signatureHeight + 20));
+            // const posYFromBottom = 72 + (index * (signatureHeight + 20));
             // Nota: Esto es un cálculo SIMPLIFICADO. La Y real depende del alto de la página.
             // La Y que guardamos aquí es la 'posY' que espera createNotionSigner (ej. desde arriba).
             // ¡NECESITARÁS AJUSTAR ESTO O CALCULARLO MEJOR EN LA PÁGINA DE FIRMA!

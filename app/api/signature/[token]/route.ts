@@ -8,11 +8,9 @@ import crypto from 'crypto';
 
 // --- Importar Tipos Centralizados ---
 // ¡ASEGÚRATE DE QUE ESTOS TIPOS ESTÉN EXPORTADOS DESDE lib/types.ts!
-import type {
-    SignerInfo,
-    ContractInfo,
-    SignerAndContractDataResult // <-- Verifica que este nombre sea EXACTO y esté EXPORTADO en lib/types.ts
-} from '@/lib/types';
+import type { SignerAndContractDataResult } from '@/lib/types'; // Importa solo el tipo combinado
+// Y asegúrate de importar los tipos individuales si los necesitas MÁS ABAJO
+// import type { SignerInfo, ContractInfo } from '@/lib/types'; // Si los usas explícitamente después
 
 // --- Importar Funciones del Servicio Notion ---
 import {
@@ -27,7 +25,7 @@ const secret = process.env.JWT_SECRET;
 const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
 const baseUrl = process.env.BASE_URL;
 const resendApiKey = process.env.RESEND_API_KEY;
-const emailFrom = process.env.EMAIL_FROM || 'Contratos MVPX <noreply@resend.dev>';
+// const emailFrom = process.env.EMAIL_FROM || 'Contratos MVPX <noreply@resend.dev>';
 const resend = resendApiKey ? new Resend(resendApiKey) : null;
 
 // --- Interfaces Específicas de esta Ruta ---
