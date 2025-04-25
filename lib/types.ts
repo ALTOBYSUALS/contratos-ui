@@ -111,3 +111,15 @@ export type SignerAndContractDataResult = {
 // --- FIN DE LAS DEFINICIONES A AÑADIR ---
 
 // Puedes tener otros tipos aquí...
+// En /lib/types.ts
+
+// ... (Otras interfaces: Client, Template, SentContract, SignerInfo, etc.) ...
+
+// --- AÑADIR O ASEGURARSE DE QUE ESTO ESTÉ EXPORTADO ---
+export interface SignatureClientProps {
+    token: string;          // El token JWT de la URL
+    signerName: string;     // Nombre del firmante para mostrar
+    contractPdfUrl: string; // URL del PDF borrador para mostrar
+    // Puedes añadir más props si las necesitas pasar desde page.tsx
+}
+// --- FIN ---
