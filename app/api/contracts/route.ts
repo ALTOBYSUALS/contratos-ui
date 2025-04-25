@@ -1,39 +1,38 @@
 // /app/api/contracts/route.ts
 import { NextResponse } from 'next/server';
-import { listarContratosEnviados } from '@/services/notion'; // Asegúrate que esta función exista en notion.ts
-import type { SentContract } from '@/lib/types'; // <-- Importa desde lib/types
+import { listarContratosEnviados } from '@/services/notion'; // Asegúrate que esta función exista y esté exportada en notion.ts
+import type { SentContract } from '@/lib/types'; // Importa el tipo desde lib/types
 
-export async function GET(_request: Request) {
-    console.log('[API /api/contracts] Recibida petición GET para listar contratos'); // Log para confirmar
+// Handler para solicitudes GET a /api/contracts
+export async function GET() { // Eliminado el parámetro _request al no usarse
+    console.log('[API /api/contracts] Recibida petición GET para listar contratos');
     try {
-        // Llama a l
-        
-        // a función del servicio que consulta la DB de Contratos-Creados
+        // Llama a la función del servicio que consulta la DB de Contratos-Creados
         const contracts: SentContract[] = await listarContratosEnviados();
 
         console.log(`[API /api/contracts] Devolviendo ${contracts.length} contratos.`);
+        // Devuelve la lista de contratos (o un array vacío si no hay)
         return NextResponse.json(contracts);
 
-    } catch (err: unknown) { // <-- Cambiado a unknown
-        console.error('[AI Finalize-Contract] Error:', err); // Loguea el error completo
-    
-        let errorMessage = "Error al procesar la solicitud con IA"; // Mensaje por defecto
-    
-        // Verifica si 'err' es un objeto Error para acceder a .message
-        if (err instanceof Error) {
-            errorMessage = err.message;
-        } else if (typeof err === 'string') {
-            // Si el error es solo un string
-            errorMessage = err;
-        }
-        // Puedes añadir más 'else if' para otros tipos si es necesario
-    
-        // Devuelve el mensaje de error seguro
-        return NextResponse.json(
-          { error: errorMessage }, // Usa la variable procesada
-          { status: 500 }
-        );
-      }
-    }
+    } catch (error: unknown) { // Captura cualquier error como 'unknown'
+        console.error("[API /api/contracts] Error listando contratos:", error); // Loguea el error completo
 
-// NOTA: Necesitarás también implementar la función listarContratosEnviados en /services/notion.ts
+        // Determina un mensaje de error seguro para el cliente
+        let errorMessage = "Error desconocido al obtener la lista de contratos.";
+        if (error instanceof Error) {
+            errorMessage = error.message;
+            // Opcional: Podrías intentar parsear 'error.cause' o 'error.body' si esperas errores específicos de Notion
+        } else if (typeof error === 'string') {
+            errorMessage = error;
+        }
+
+        // Devuelve una respuesta de error clara al frontend
+        return NextResponse.json(
+            { error: `Error al obtener la lista de contratos: ${errorMessage}` },
+            { status: 500 } // Error interno del servidor
+        );
+    }
+}
+
+// NOTA: Aquí podrían ir otros métodos como POST para crear un contrato manualmente (si fuera necesario),
+// pero la lógica principal de creación/envío está en /api/contracts/send-finalized/route.ts
