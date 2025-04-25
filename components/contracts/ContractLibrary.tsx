@@ -6,8 +6,8 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner"; // Using sonner
 import { jsPDF } from "jspdf";
-import html2canvas from 'html2canvas'; // Keep for potential future use or complex elements, though manual is primary now
-import { Document, Paragraph, TextRun, Packer, Numbering, HeadingLevel, StyleLevel, AlignmentType } from "docx"; // Added StyleLevel, AlignmentType
+// import html2canvas from 'html2canvas'; // Keep for potential future use or complex elements, though manual is primary now
+import { Document, Paragraph, TextRun, Packer, HeadingLevel, AlignmentType } from "docx"; // Added StyleLevel, AlignmentType
 import * as mammoth from "mammoth";
 
 // --- Shadcn/UI Imports ---
@@ -20,7 +20,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
     Dialog,
-    DialogClose,
     DialogContent,
     DialogHeader,
     DialogTitle,
@@ -301,7 +300,7 @@ const ContractLibrary = () => { // <--- Inicio del componente
         selectedParticipants.forEach((email) => {
             const client = clients.find((c) => c.email === email);
             const percentage = participantPercentages[email] || 0;
-            const percentageStr = percentage.toFixed(2);
+            // const percentageStr = percentage.toFixed(2);
             if (client) {
                 const clientPlaceholders: Record<string, string | undefined> = { /* ... tu objeto placeholders ... */ };
                 const rolePrefix = client.role ? client.role.charAt(0).toUpperCase() + client.role.slice(1) : "";
@@ -992,15 +991,24 @@ const ContractLibrary = () => { // <--- Inicio del componente
 
                     // Handle block elements (Paragraphs, Headings, Divs, Blockquotes)
                     if (['p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote'].includes(tagName)) {
-                        let headingLevelValue: HeadingLevel | undefined = undefined; // Type correctly
+                        // Declarar la variable para el valor del Enum
+                        let headingLevelValue: typeof HeadingLevel[keyof typeof HeadingLevel] | undefined = undefined;
+
+                        // --- CORRECCIÓN: Usar SWITCH para mapear tag a Enum VALOR ---
                         if (tagName.match(/^h[1-6]$/)) {
-                            const levelString = tagName.toUpperCase() as keyof typeof HeadingLevel; // e.g., "H1"
-                            // Map string "H1" to enum HeadingLevel.HEADING_1 etc.
-                            headingLevelValue = HeadingLevel[levelString] as HeadingLevel | undefined;
-                            // Fallback if mapping fails (shouldn't happen with h1-h6)
-                            if (headingLevelValue === undefined) {
-                                console.warn(`Could not map heading level for ${tagName}`);
+                            switch (tagName) {
+                                case 'h1': headingLevelValue = HeadingLevel.HEADING_1; break;
+                                case 'h2': headingLevelValue = HeadingLevel.HEADING_2; break;
+                                case 'h3': headingLevelValue = HeadingLevel.HEADING_3; break;
+                                case 'h4': headingLevelValue = HeadingLevel.HEADING_4; break;
+                                case 'h5': headingLevelValue = HeadingLevel.HEADING_5; break;
+                                case 'h6': headingLevelValue = HeadingLevel.HEADING_6; break;
+                                // No necesitamos default porque ya filtramos h1-h6
                             }
+                            // Log si por alguna razón no se mapeó (no debería pasar)
+                             if (headingLevelValue === undefined) {
+                                 console.warn(`Could not map heading level for ${tagName}`);
+                             }
                         }
 
                         // Filter out only the TextRuns from direct children for this paragraph
