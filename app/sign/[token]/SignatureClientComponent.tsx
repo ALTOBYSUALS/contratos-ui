@@ -2,7 +2,7 @@
 
 "use client";
 
-import React, { useRef, useState, useEffect, useCallback } from 'react'; // Añadido useEffect y useCallback
+import React, { useRef, useState, useCallback } from 'react'; // Añadido useEffect y useCallback
 import SignatureCanvas from 'react-signature-canvas'; // Para dibujar la firma
 import { Document, Page, pdfjs } from 'react-pdf'; // Para MOSTRAR el PDF
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css'; // Estilos necesarios

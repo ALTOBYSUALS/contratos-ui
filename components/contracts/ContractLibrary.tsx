@@ -54,11 +54,11 @@ import React, { useState, useRef, useEffect, useCallback, ChangeEvent } from "re
 
 
 // --- Helper Function: createClientObject ---
-const createClientObject = (data: any, idOverride?: string): Client => {
+const createClientObject = (data: Record<string, any>, idOverride?: string): Client => {
     const firstName = data.firstName?.trim() || "";
     const lastName = data.lastName?.trim() || "";
     let calculatedFullName = `${firstName} ${lastName}`.trim();
-    // Fallbacks for name calculation
+    // Fallbacks for name calculation  
     if (!calculatedFullName && data.FullName) calculatedFullName = data.FullName;
     if (!calculatedFullName && data.name) calculatedFullName = data.name;
     if (!calculatedFullName && data.labelName) calculatedFullName = data.labelName; // Use label name if person name missing
@@ -293,26 +293,39 @@ const ContractLibrary = () => { // <--- Inicio del componente
 
     } catch (e) { console.error("Error replacing general placeholders:", e); }
 
-    // --- 3. Reemplazar Datos de Participantes ---
-    const participantReplacements: { [placeholder: string]: string } = {};
-    if (selectedParticipants.length > 0 && clients.length > 0) {
-        console.log(">>> applyAllDataToContent: Preparing participant replacements...");
-        selectedParticipants.forEach((email) => {
-            const client = clients.find((c) => c.email === email);
-            const percentage = participantPercentages[email] || 0;
-            // const percentageStr = percentage.toFixed(2);
-            if (client) {
-                const clientPlaceholders: Record<string, string | undefined> = { /* ... tu objeto placeholders ... */ };
-                const rolePrefix = client.role ? client.role.charAt(0).toUpperCase() + client.role.slice(1) : "";
-                Object.entries(clientPlaceholders).forEach(([key, value]) => {
-                    if (value !== undefined) {
-                         if (rolePrefix) participantReplacements[`[${rolePrefix}${key}]`] = value;
-                         const genericPlaceholder = `[${key}]`;
-                         if (!participantReplacements[genericPlaceholder]) participantReplacements[genericPlaceholder] = value;
-                    }
-                });
-            }
-        });
+       // --- 3. Reemplazar Datos de Participantes ---
+       const participantReplacements: { [placeholder: string]: string } = {};
+       if (selectedParticipants.length > 0 && clients.length > 0) {
+           console.log(">>> applyAllDataToContent: Preparing participant replacements...");
+           selectedParticipants.forEach((_email) => { // <-- CORREGIDO: Usa _email
+               const client = clients.find((c) => c.email === _email);
+               const percentageStr = (participantPercentages[_email] || 0).toFixed(2); // <-- CORREGIDO: Calcula str directamente
+               if (client) {
+                   // --- ¡ASEGÚRATE DE QUE ESTE OBJETO CONTENGA TODAS LAS CLAVES NECESARIAS! ---
+                   const clientPlaceholders: Record<string, string | undefined> = {
+                       FullName: client.FullName, Name: client.name, FirstName: client.firstName,
+                       LastName: client.lastName, Email: client.email, Phone: client.phone, Role: client.role,
+                       Passport: client.passport, Address: client.address, Country: client.country, DOB: client.dateOfBirth,
+                       Facebook: client.facebook, Instagram: client.instagram, Linkedin: client.linkedin, Twitter: client.twitter,
+                       LabelName: client.labelName, LabelEmail: client.labelEmail, LabelPhone: client.labelPhone, LabelAddress: client.labelAddress, LabelCountry: client.labelCountry,
+                       PublisherName: client.publisherName, PublisherEmail: client.publisherEmail, PublisherPhone: client.publisherPhone, PublisherAddress: client.publisherAddress, PublisherCountry: client.publisherCountry,
+                       PublisherIpi: client.publisherIpi, Firma: client.Firma,
+                       Percentage: percentageStr, // <-- CORREGIDO: Usa la variable string
+                       // ... (Añade otros placeholders derivados si los necesitas, ej. ArtistName = client.role === 'Artist' ? client.FullName : undefined) ...
+                   };
+                   // -----------------------------------------------------------------------------------
+   
+                   const rolePrefix = client.role ? client.role.charAt(0).toUpperCase() + client.role.slice(1) : "";
+                   Object.entries(clientPlaceholders).forEach(([key, value]) => {
+                       if (value !== undefined) {
+                            if (rolePrefix) participantReplacements[`[${rolePrefix}${key}]`] = value;
+                            const genericPlaceholder = `[${key}]`;
+                            if (!participantReplacements[genericPlaceholder]) participantReplacements[genericPlaceholder] = value;
+                       }
+                   });
+               }
+           });
+           // ... (resto de la lógica de reemplazo) ...
 
         // Hacer los reemplazos
         try {

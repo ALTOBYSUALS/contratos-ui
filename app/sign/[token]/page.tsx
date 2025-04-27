@@ -1,5 +1,5 @@
 // /app/sign/[token]/page.tsx
-import { redirect } from 'next/navigation';
+// import { redirect } from 'next/navigation';
 import jwt from 'jsonwebtoken';
 import { headers } from 'next/headers'; // Para forzar dinamismo
 
