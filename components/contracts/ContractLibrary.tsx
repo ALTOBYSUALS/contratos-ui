@@ -235,14 +235,25 @@ const ContractLibrary = () => { // <--- Inicio del componente
                 setSentContracts(sentContractsData.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
 
                 console.log(">>> Initial Data OK:", { templates: templatesData.length, clients: clientsDataProcessed.length, sent: sentContractsData.length });
-            } catch (err: unknown) {
-                setError(err.message);
-                console.error(">>> Initial Fetch Error:", err);
-                toast.error("Error cargando datos iniciales", { description: err.message });
+            } catch (err: unknown) { // <-- Mantener unknown
+                console.error(">>> Initial Fetch Error:", err); // Loguear siempre
+
+                // --- VERIFICACIÓN DE TIPO ---
+                let errorMessage = "Ocurrió un error desconocido al cargar los datos iniciales.";
+                if (err instanceof Error) {
+                    errorMessage = err.message; // Seguro usar .message
+                } else if (typeof err === 'string') {
+                    errorMessage = err;
+                }
+                // --- FIN VERIFICACIÓN ---
+
+                // Usa el errorMessage procesado y seguro
+                setError(errorMessage); // Actualiza el estado de error con el mensaje seguro
+                toast.error("Error cargando datos iniciales", { description: errorMessage }); // Muestra el mensaje seguro
+
             } finally {
                 setIsLoading(false);
             }
-        };
         fetchData();
     }, []);
 
@@ -328,18 +339,46 @@ const ContractLibrary = () => { // <--- Inicio del componente
            // ... (resto de la lógica de reemplazo) ...
 
         // Hacer los reemplazos
-        try {
-            console.log(">>> applyAllDataToContent: Performing participant replacements...");
-            Object.keys(participantReplacements).sort((a, b) => b.length - a.length)
-                .forEach((placeholder) => {
-                    const replacementValue = participantReplacements[placeholder] ?? "";
-                    const escapedPlaceholder = placeholder.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
-                    const regex = new RegExp(escapedPlaceholder, "gi");
-                    updatedContent = updatedContent.replace(regex, replacementValue);
-                });
-        } catch (e) { console.error("Error replacing participant placeholders:", e); }
-    } else {
-        console.log(">>> applyAllDataToContent: No participants selected or no clients loaded, skipping participant replacements.");
+           // --- 4. Generar y Reemplazar Bloques HTML (Listas/Firmas) ---
+    try {
+        console.log(">>> applyAllDataToContent: Generating list/signature blocks...");
+        // --- CORREGIDO: Cambiado let a const ---
+        const collaboratorsList = selectedParticipants.map(_email => { // Usar map para construir directamente
+            const client = clients.find(c => c.email === _email);
+            if (!client) return ''; // Omitir si no se encuentra el cliente
+            const percentageText = participantPercentages[_email] !== undefined ? ` (${participantPercentages[_email].toFixed(2)}%)` : '';
+            return `<li>${client.FullName} (${client.role || 'Participante'})${percentageText}</li>`;
+        }).join(''); // Unir los <li> generados
+
+        const signaturesBlock = selectedParticipants.map(_email => { // Usar map para construir directamente
+             const client = clients.find(c => c.email === _email);
+             if (!client) return '';
+             // Asegúrate de que client.Firma y otros datos existan
+             const firmaHtml = `<div style="margin-top: 25px; margin-bottom: 5px; border-bottom: 1px solid #333; padding-bottom: 3px; font-weight: bold;">${client.Firma || 'Firma Pendiente'}</div>`;
+             const infoHtml = `<p style="margin-bottom: 20px; font-size: 0.9em;">(${client.FullName || 'Nombre Desconocido'}, ${client.role || 'Participante'})</p>`;
+             return firmaHtml + infoHtml;
+         }).join(''); // Unir los bloques de firma generados
+        // --- FIN CORRECCIÓN ---
+
+        // Ahora usa las constantes para construir el HTML final
+        const collaboratorListHtml = selectedParticipants.length > 0 ? `<ul>${collaboratorsList}</ul>` : ""; // Usa "" si no hay nada
+        const collaboratorListNoPercentHtml = selectedParticipants.length > 0
+            ? `<ul>${selectedParticipants.map(_email => {
+                  const client = clients.find(c => c.email === _email);
+                  return client ? `<li>${client.FullName} (${client.role || 'Participante'})</li>` : '';
+                }).join('')}</ul>`
+            : ""; // Usa "" si no hay nada
+        const signaturesHtml = selectedParticipants.length > 0 ? `<div style="margin-top: 40px;">${signaturesBlock}</div>` : ""; // Usa "" si no hay nada
+
+        // Reemplazar placeholders
+        updatedContent = updatedContent.replace(/\[ListaColaboradoresConPorcentaje\]/gi, collaboratorListHtml);
+        updatedContent = updatedContent.replace(/\[ListaColaboradores\]/gi, collaboratorListNoPercentHtml);
+        updatedContent = updatedContent.replace(/\[FirmasColaboradores\]/gi, signaturesHtml);
+        updatedContent = updatedContent.replace(/\[Firmas\]/gi, signaturesHtml);
+
+    } catch (error: unknown) { // Asegúrate que el catch use unknown
+        console.error("Error replacing HTML block placeholders:", error);
+         // Opcional: añadir manejo de mensaje de error si es necesario aquí
     }
 
 
@@ -369,16 +408,16 @@ const ContractLibrary = () => { // <--- Inicio del componente
     }, [selectedContract, editedContent, generalData, selectedParticipants, clients, participantPercentages, step]);
 
     // — Build participants payload for the AI — (ADDED AS PER INSTRUCTIONS)
-    const buildParticipantsPayload = (): ParticipantFinal[] =>
-      selectedParticipants.map(email => {
-        const cli = clients.find(c => c.email === email)
-        return {
-          email,
-          name: cli?.FullName || cli?.name || email,
-          role: cli?.role || 'Participante',
-          percentage: participantPercentages[email] ?? 0
-        }
-      });
+const buildParticipantsPayload = (): ParticipantFinal[] =>
+    selectedParticipants.map(email => { // <--- Aquí está el 'email' no usado también
+      const cli = clients.find(c => c.email === email);
+      return {
+        email, // <-- Usando 'email' aquí
+        name: cli?.FullName || cli?.name || email,
+        role: cli?.role || 'Participante',
+        percentage: participantPercentages[email] ?? 0
+      }
+    });
 
     // --- Derived Calculations ---
     const totalPercentage = selectedParticipants.reduce((sum, email) => sum + (participantPercentages[email] || 0), 0);
@@ -833,23 +872,23 @@ const ContractLibrary = () => { // <--- Inicio del componente
                 // Split text to fit width
                 const lines = pdf.splitTextToSize(text, availableWidth);
 
-                lines.forEach((line: string, index: number) => {
-                    // Add new page if content exceeds current page limit
-                    if (currentY + lineHeight > maxY) {
-                        pdf.addPage();
-                        currentY = margins.top;
-                        // Re-apply font settings on new page
-                        pdf.setFontSize(fontSize);
-                         try { pdf.setFont(undefined, fontStyle); } catch(e) { console.warn("jsPDF setFont new page warning:", e); }
-                    }
-
-                    // Add list prefix only to the first line of a list item
-                    const lineContent = (options.isListItem && index === 0) ? `${options.listPrefix || ''}${line}` : line;
-                    pdf.text(lineContent, textX, currentY);
-                    currentY += lineHeight; // Move Y down for the next line
-                });
-                 // No need to reset font style here, will be set by the next call to addText
-            };
+                                // --- CORREGIDO: Bucle forEach simplificado ---
+                                lines.forEach((line: string) => { // Solo recibe 'line'
+                                    // Añadir página nueva si es necesario
+                                    if (currentY + lineHeight > maxY) {
+                                        pdf.addPage();
+                                        currentY = margins.top;
+                                        pdf.setFontSize(fontSize); // Reaplicar tamaño
+                                        try { pdf.setFont(undefined, fontStyle); } // Reaplicar estilo
+                                        catch (e: unknown) { console.warn("jsPDF setFont new page warning:", e); } // Usa unknown
+                                    }
+                
+                                    // Añadir la línea de texto actual directamente
+                                    pdf.text(line, textX, currentY); // <-- Usa 'line' directamente
+                
+                                    currentY += lineHeight; // Mover a la siguiente posición Y
+                                });
+                                // --- FIN CORRECCIÓN ---
 
             // --- Process the HTML content manually ---
             const tempDiv = document.createElement("div");
