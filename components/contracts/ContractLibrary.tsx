@@ -208,55 +208,59 @@ const ContractLibrary = () => { // <--- Inicio del componente
 
     // --- Data Fetching ---
     useEffect(() => {
+        // Define la función asíncrona DENTRO del useEffect
         const fetchData = async () => {
             setIsLoading(true);
             setError(null);
             console.log(">>> Fetching initial data...");
             try {
-                // Fetch templates, clients, and potentially sent contracts
                 const [templatesRes, clientsRes, sentContractsRes] = await Promise.all([
                     fetch('/api/templates'),
                     fetch('/api/clients'),
-                    fetch('/api/contracts') // Assuming an endpoint to get sent contracts exists
+                    fetch('/api/contracts')
                 ]);
 
-                if (!templatesRes.ok) throw new Error(`Plantillas: ${templatesRes.statusText} (${templatesRes.status})`);
-                if (!clientsRes.ok) throw new Error(`Clientes: ${clientsRes.statusText} (${clientsRes.status})`);
-                if (!sentContractsRes.ok) console.warn(`Enviados: ${sentContractsRes.statusText} (${sentContractsRes.status}) - Continuing without`); // Non-critical
+                // Validaciones de respuesta...
+                if (!templatesRes.ok) throw new Error(`Plantillas API Error: ${templatesRes.status} ${templatesRes.statusText}`);
+                if (!clientsRes.ok) throw new Error(`Clientes API Error: ${clientsRes.status} ${clientsRes.statusText}`);
+                if (!sentContractsRes.ok) console.warn(`Enviados API Warning: ${sentContractsRes.status} ${sentContractsRes.statusText}`);
 
                 const templatesData: Template[] = await templatesRes.json();
                 const clientsDataRaw: any[] = await clientsRes.json();
                 const sentContractsData: SentContract[] = sentContractsRes.ok ? await sentContractsRes.json() : [];
 
-                const clientsDataProcessed: Client[] = clientsDataRaw.map(clientRaw => createClientObject(clientRaw));
+                // Usa Record<string, any> para el mapeo seguro
+                const clientsDataProcessed: Client[] = clientsDataRaw.map(clientRaw => createClientObject(clientRaw as Record<string, any>));
 
-                setTemplates(templatesData.sort((a,b) => a.title.localeCompare(b.title)));
+                // Actualiza estados
+                setTemplates(templatesData.sort((a, b) => a.title.localeCompare(b.title)));
                 setClients(clientsDataProcessed.sort((a, b) => (a.FullName || '').localeCompare(b.FullName || '')));
                 setSentContracts(sentContractsData.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
 
                 console.log(">>> Initial Data OK:", { templates: templatesData.length, clients: clientsDataProcessed.length, sent: sentContractsData.length });
-            } catch (err: unknown) { // <-- Mantener unknown
-                console.error(">>> Initial Fetch Error:", err); // Loguear siempre
 
-                // --- VERIFICACIÓN DE TIPO ---
+            } catch (error: unknown) { // <-- Catch corregido con unknown
+                console.error(">>> Initial Fetch Error:", error);
                 let errorMessage = "Ocurrió un error desconocido al cargar los datos iniciales.";
-                if (err instanceof Error) {
-                    errorMessage = err.message; // Seguro usar .message
-                } else if (typeof err === 'string') {
-                    errorMessage = err;
-                }
-                // --- FIN VERIFICACIÓN ---
-
-                // Usa el errorMessage procesado y seguro
-                setError(errorMessage); // Actualiza el estado de error con el mensaje seguro
-                toast.error("Error cargando datos iniciales", { description: errorMessage }); // Muestra el mensaje seguro
-
+                if (error instanceof Error) { errorMessage = error.message; }
+                 else if (typeof error === 'string') { errorMessage = error; }
+                setError(errorMessage); // Actualiza estado de error
+                toast.error("Error cargando datos iniciales", { description: errorMessage }); // Muestra toast
             } finally {
-                setIsLoading(false);
+                setIsLoading(false); // Asegura quitar el estado de carga
             }
-        };
+        }; // <-- Fin de la definición de fetchData
+
+        // --- LLAMA A LA FUNCIÓN ASÍNCRONA ---
         fetchData();
-    }, []); // <-- Añadir punto y coma aquí
+        // ------------------------------------
+
+    }, []); // <-- Array de dependencias vacío para que se ejecute solo una vez al montar
+
+    // ; // Punto y coma opcional aquí
+
+// --- Placeholder Replacement Logic ---
+// ... resto de tu componente ...
     
      // --- Placeholder Replacement Logic (con Logs y manejo de tipos y dependencias) ---
      const applyAllDataToContent = useCallback(() => {
