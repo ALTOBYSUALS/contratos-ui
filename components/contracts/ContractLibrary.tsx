@@ -254,159 +254,132 @@ const ContractLibrary = () => { // <--- Inicio del componente
             } finally {
                 setIsLoading(false);
             }
+        };
         fetchData();
-    }, []);
+    }, []); // <-- Añadir punto y coma aquí
+    
+     // --- Placeholder Replacement Logic (con Logs y manejo de tipos y dependencias) ---
+     const applyAllDataToContent = useCallback(() => {
+        console.log(`>>> applyAllDataToContent called. Current step: ${step}`); // Log inicial
 
- // --- Placeholder Replacement Logic (LESS STRICT - EMPTY REPLACEMENT - FIXED) ---
- const applyAllDataToContent = useCallback(() => {
-    console.log(`>>> applyAllDataToContent called. Current step: ${step}`); // Log inicial
+        // 1. Determinar el contenido base
+        let baseContentSource = "";
+        let baseContent = "";
 
-    // 1. Determinar el contenido base
-    let baseContentSource = ""; // Para saber de dónde viene
-    let baseContent = "";
+        if (step === 2 && editorRef.current) {
+            baseContent = editorRef.current.innerHTML;
+            baseContentSource = "editorRef.current.innerHTML";
+            console.log(`>>> applyAllDataToContent: Trying editorRef.current.innerHTML.`);
+        } else if (editedContent) {
+            baseContent = editedContent;
+            baseContentSource = "editedContent state";
+            console.log(`>>> applyAllDataToContent: Falling back to editedContent state.`);
+        } else if (selectedContract?.content) {
+            baseContent = selectedContract.content;
+            baseContentSource = "selectedContract.content";
+            console.log(`>>> applyAllDataToContent: Falling back to selectedContract.content.`);
+        } else {
+            baseContentSource = "None";
+            console.log(`>>> applyAllDataToContent: No base content source found.`);
+        }
 
-    if (step === 2 && editorRef.current) {
-        baseContent = editorRef.current.innerHTML;
-        baseContentSource = "editorRef.current.innerHTML";
-    } else if (editedContent) {
-        baseContent = editedContent;
-        baseContentSource = "editedContent state";
-    } else if (selectedContract?.content) {
-        baseContent = selectedContract.content;
-        baseContentSource = "selectedContract.content";
-    } else {
-        baseContentSource = "None"; // No se encontró contenido base
-    }
+        console.log(`>>> applyAllDataToContent: Selected source: ${baseContentSource}`);
+        console.log(`>>> applyAllDataToContent: Base content (first 200): ${baseContent ? baseContent.substring(0, 200) + "..." : "EMPTY"}`);
 
-    console.log(`>>> applyAllDataToContent: Base content source: ${baseContentSource}`);
-    console.log(`>>> applyAllDataToContent: Base content (first 200): ${baseContent.substring(0, 200)}...`);
+        if (!baseContent || !baseContent.trim()) {
+            console.warn(">>> applyAllDataToContent: Base content is empty or whitespace. Returning empty string.");
+            return "";
+        }
 
-    // Validar si tenemos contenido base antes de continuar
-    if (!baseContent.trim()) {
-        console.warn(">>> applyAllDataToContent: Base content is empty or whitespace. Returning empty string.");
-        return ""; // Salir temprano si no hay nada que procesar
-    }
+        let updatedContent = baseContent;
 
-    // Inicializar updatedContent CON el baseContent válido
-    let updatedContent = baseContent;
+        // --- 2. Reemplazar Datos Generales ---
+        try {
+            console.log(">>> applyAllDataToContent: Replacing General Data...");
+            updatedContent = updatedContent.replace(/\[Jurisdiccion\]/gi, generalData.jurisdiction || "");
+            updatedContent = updatedContent.replace(/\[Fecha\]/gi, generalData.fecha || "");
+            updatedContent = updatedContent.replace(/\[trackTitle\]/gi, generalData.trackTitle || "");
+            updatedContent = updatedContent.replace(/\[LugarDeFirma\]/gi, generalData.lugarDeFirma || "");
+            updatedContent = updatedContent.replace(/\[AreaArtistica\]/gi, generalData.areaArtistica || "");
+            updatedContent = updatedContent.replace(/\[DuracionContrato\]/gi, generalData.duracionContrato || "");
+            updatedContent = updatedContent.replace(/\[PeriodoAviso\]/gi, generalData.periodoAviso || "");
 
-    // --- 2. Reemplazar Datos Generales ---
-    try {
-        console.log(">>> applyAllDataToContent: Replacing General Data...");
-        updatedContent = updatedContent.replace(/\[Jurisdiccion\]/gi, generalData.jurisdiction || ""); // Usa vacío si no hay dato
-        updatedContent = updatedContent.replace(/\[Fecha\]/gi, generalData.fecha || "");
-        updatedContent = updatedContent.replace(/\[trackTitle\]/gi, generalData.trackTitle || "");
-        updatedContent = updatedContent.replace(/\[LugarDeFirma\]/gi, generalData.lugarDeFirma || "");
-        // Añade aquí CUALQUIER otro placeholder general que uses
-        updatedContent = updatedContent.replace(/\[AreaArtistica\]/gi, generalData.areaArtistica || "");
-        updatedContent = updatedContent.replace(/\[DuracionContrato\]/gi, generalData.duracionContrato || "");
-        updatedContent = updatedContent.replace(/\[PeriodoAviso\]/gi, generalData.periodoAviso || "");
+        } catch (error: unknown) { console.error("Error replacing general placeholders:", error); } // Usa unknown
 
-    } catch (e) { console.error("Error replacing general placeholders:", e); }
+        // --- 3. Reemplazar Datos de Participantes ---
+        const participantReplacements: { [placeholder: string]: string } = {};
+        if (selectedParticipants.length > 0 && clients.length > 0) {
+            console.log(">>> applyAllDataToContent: Preparing participant replacements...");
+            selectedParticipants.forEach((_email) => { // Usa _email
+                const client = clients.find((c) => c.email === _email);
+                const percentageStr = (participantPercentages[_email] || 0).toFixed(2); // Usa _email
+                if (client) {
+                    const clientPlaceholders: Record<string, string | undefined> = { /* ... pon aquí TODAS las claves que necesitas */
+                        FullName: client.FullName, Name: client.name, FirstName: client.firstName,
+                        LastName: client.lastName, Email: client.email, Phone: client.phone, Role: client.role,
+                        Passport: client.passport, Address: client.address, Country: client.country, DOB: client.dateOfBirth,
+                        Facebook: client.facebook, Instagram: client.instagram, Linkedin: client.linkedin, Twitter: client.twitter,
+                        LabelName: client.labelName, LabelEmail: client.labelEmail, LabelPhone: client.labelPhone, LabelAddress: client.labelAddress, LabelCountry: client.labelCountry,
+                        PublisherName: client.publisherName, PublisherEmail: client.publisherEmail, PublisherPhone: client.publisherPhone, PublisherAddress: client.publisherAddress, PublisherCountry: client.publisherCountry,
+                        PublisherIpi: client.publisherIpi, Firma: client.Firma,
+                        Percentage: percentageStr, // Usa percentageStr
+                         // ... otros placeholders derivados ...
+                    };
+                    const rolePrefix = client.role ? client.role.charAt(0).toUpperCase() + client.role.slice(1) : "";
+                    Object.entries(clientPlaceholders).forEach(([key, value]) => {
+                        if (value !== undefined) {
+                             if (rolePrefix) participantReplacements[`[${rolePrefix}${key}]`] = value;
+                             const genericPlaceholder = `[${key}]`;
+                             if (!participantReplacements[genericPlaceholder]) participantReplacements[genericPlaceholder] = value;
+                        }
+                    });
+                }
+            });
+            try {
+                console.log(">>> applyAllDataToContent: Performing participant replacements...");
+                Object.keys(participantReplacements).sort((a, b) => b.length - a.length)
+                    .forEach((placeholder) => {
+                        const replacementValue = participantReplacements[placeholder] ?? "";
+                        const escapedPlaceholder = placeholder.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
+                        const regex = new RegExp(escapedPlaceholder, "gi");
+                        updatedContent = updatedContent.replace(regex, replacementValue);
+                    });
+            } catch (error: unknown) { console.error("Error replacing participant placeholders:", error); } // Usa unknown
+        } else {
+            console.log(">>> applyAllDataToContent: Skipping participant replacement.");
+        }
 
-       // --- 3. Reemplazar Datos de Participantes ---
-       const participantReplacements: { [placeholder: string]: string } = {};
-       if (selectedParticipants.length > 0 && clients.length > 0) {
-           console.log(">>> applyAllDataToContent: Preparing participant replacements...");
-           selectedParticipants.forEach((_email) => { // <-- CORREGIDO: Usa _email
-               const client = clients.find((c) => c.email === _email);
-               const percentageStr = (participantPercentages[_email] || 0).toFixed(2); // <-- CORREGIDO: Calcula str directamente
-               if (client) {
-                   // --- ¡ASEGÚRATE DE QUE ESTE OBJETO CONTENGA TODAS LAS CLAVES NECESARIAS! ---
-                   const clientPlaceholders: Record<string, string | undefined> = {
-                       FullName: client.FullName, Name: client.name, FirstName: client.firstName,
-                       LastName: client.lastName, Email: client.email, Phone: client.phone, Role: client.role,
-                       Passport: client.passport, Address: client.address, Country: client.country, DOB: client.dateOfBirth,
-                       Facebook: client.facebook, Instagram: client.instagram, Linkedin: client.linkedin, Twitter: client.twitter,
-                       LabelName: client.labelName, LabelEmail: client.labelEmail, LabelPhone: client.labelPhone, LabelAddress: client.labelAddress, LabelCountry: client.labelCountry,
-                       PublisherName: client.publisherName, PublisherEmail: client.publisherEmail, PublisherPhone: client.publisherPhone, PublisherAddress: client.publisherAddress, PublisherCountry: client.publisherCountry,
-                       PublisherIpi: client.publisherIpi, Firma: client.Firma,
-                       Percentage: percentageStr, // <-- CORREGIDO: Usa la variable string
-                       // ... (Añade otros placeholders derivados si los necesitas, ej. ArtistName = client.role === 'Artist' ? client.FullName : undefined) ...
-                   };
-                   // -----------------------------------------------------------------------------------
-   
-                   const rolePrefix = client.role ? client.role.charAt(0).toUpperCase() + client.role.slice(1) : "";
-                   Object.entries(clientPlaceholders).forEach(([key, value]) => {
-                       if (value !== undefined) {
-                            if (rolePrefix) participantReplacements[`[${rolePrefix}${key}]`] = value;
-                            const genericPlaceholder = `[${key}]`;
-                            if (!participantReplacements[genericPlaceholder]) participantReplacements[genericPlaceholder] = value;
-                       }
-                   });
-               }
-           });
-           // ... (resto de la lógica de reemplazo) ...
+        // --- 4. Generar y Reemplazar Bloques HTML (Listas/Firmas) ---
+        try {
+            console.log(">>> applyAllDataToContent: Generating list/signature blocks...");
+            // --- Usa const y map ---
+            const collaboratorsList = selectedParticipants.map(_email => { /* ... lógica para generar <li> ... */ }).join('');
+            const signaturesBlock = selectedParticipants.map(_email => { /* ... lógica para generar div de firma ... */ }).join('');
+            // --- Construye HTML final de listas ---
+            const collaboratorListHtml = selectedParticipants.length > 0 ? `<ul>${collaboratorsList}</ul>` : "";
+            const collaboratorListNoPercentHtml = selectedParticipants.length > 0 ? `<ul>${selectedParticipants.map(_email => {/*...*/}).join('')}</ul>` : "";
+            const signaturesHtml = selectedParticipants.length > 0 ? `<div style="margin-top: 40px;">${signaturesBlock}</div>` : "";
+            // --- Reemplaza ---
+            updatedContent = updatedContent.replace(/\[ListaColaboradoresConPorcentaje\]/gi, collaboratorListHtml);
+            updatedContent = updatedContent.replace(/\[ListaColaboradores\]/gi, collaboratorListNoPercentHtml);
+            updatedContent = updatedContent.replace(/\[FirmasColaboradores\]/gi, signaturesHtml);
+            updatedContent = updatedContent.replace(/\[Firmas\]/gi, signaturesHtml);
+        } catch (error: unknown) { console.error("Error replacing HTML block placeholders:", error); } // Usa unknown
 
-        // Hacer los reemplazos
-           // --- 4. Generar y Reemplazar Bloques HTML (Listas/Firmas) ---
-    try {
-        console.log(">>> applyAllDataToContent: Generating list/signature blocks...");
-        // --- CORREGIDO: Cambiado let a const ---
-        const collaboratorsList = selectedParticipants.map(_email => { // Usar map para construir directamente
-            const client = clients.find(c => c.email === _email);
-            if (!client) return ''; // Omitir si no se encuentra el cliente
-            const percentageText = participantPercentages[_email] !== undefined ? ` (${participantPercentages[_email].toFixed(2)}%)` : '';
-            return `<li>${client.FullName} (${client.role || 'Participante'})${percentageText}</li>`;
-        }).join(''); // Unir los <li> generados
+        console.log(`>>> applyAllDataToContent: Final content (first 200): ${updatedContent.substring(0, 200)}...`);
+        return updatedContent;
 
-        const signaturesBlock = selectedParticipants.map(_email => { // Usar map para construir directamente
-             const client = clients.find(c => c.email === _email);
-             if (!client) return '';
-             // Asegúrate de que client.Firma y otros datos existan
-             const firmaHtml = `<div style="margin-top: 25px; margin-bottom: 5px; border-bottom: 1px solid #333; padding-bottom: 3px; font-weight: bold;">${client.Firma || 'Firma Pendiente'}</div>`;
-             const infoHtml = `<p style="margin-bottom: 20px; font-size: 0.9em;">(${client.FullName || 'Nombre Desconocido'}, ${client.role || 'Participante'})</p>`;
-             return firmaHtml + infoHtml;
-         }).join(''); // Unir los bloques de firma generados
-        // --- FIN CORRECCIÓN ---
-
-        // Ahora usa las constantes para construir el HTML final
-        const collaboratorListHtml = selectedParticipants.length > 0 ? `<ul>${collaboratorsList}</ul>` : ""; // Usa "" si no hay nada
-        const collaboratorListNoPercentHtml = selectedParticipants.length > 0
-            ? `<ul>${selectedParticipants.map(_email => {
-                  const client = clients.find(c => c.email === _email);
-                  return client ? `<li>${client.FullName} (${client.role || 'Participante'})</li>` : '';
-                }).join('')}</ul>`
-            : ""; // Usa "" si no hay nada
-        const signaturesHtml = selectedParticipants.length > 0 ? `<div style="margin-top: 40px;">${signaturesBlock}</div>` : ""; // Usa "" si no hay nada
-
-        // Reemplazar placeholders
-        updatedContent = updatedContent.replace(/\[ListaColaboradoresConPorcentaje\]/gi, collaboratorListHtml);
-        updatedContent = updatedContent.replace(/\[ListaColaboradores\]/gi, collaboratorListNoPercentHtml);
-        updatedContent = updatedContent.replace(/\[FirmasColaboradores\]/gi, signaturesHtml);
-        updatedContent = updatedContent.replace(/\[Firmas\]/gi, signaturesHtml);
-
-    } catch (error: unknown) { // Asegúrate que el catch use unknown
-        console.error("Error replacing HTML block placeholders:", error);
-         // Opcional: añadir manejo de mensaje de error si es necesario aquí
-    }
-
-
-    // --- 4. Generar y Reemplazar Bloques HTML (Listas/Firmas) ---
-    try {
-        console.log(">>> applyAllDataToContent: Generating list/signature blocks...");
-        let collaboratorsList = ""; let signaturesBlock = "";
-        selectedParticipants.forEach(email => { /* ... tu lógica para generar HTML ... */ });
-        const collaboratorListHtml = selectedParticipants.length > 0 ? `<ul>${collaboratorsList}</ul>` : ""; // Usa "" si no hay nada
-        const collaboratorListNoPercentHtml = selectedParticipants.length > 0 ? `<ul>${collaboratorsList.replace(/\s\([\d.]+\%\)/g, '')}</ul>` : ""; // Usa "" si no hay nada
-        const signaturesHtml = selectedParticipants.length > 0 ? `<div style="margin-top: 40px;">${signaturesBlock}</div>` : ""; // Usa "" si no hay nada
-
-        updatedContent = updatedContent.replace(/\[ListaColaboradoresConPorcentaje\]/gi, collaboratorListHtml);
-        updatedContent = updatedContent.replace(/\[ListaColaboradores\]/gi, collaboratorListNoPercentHtml);
-        updatedContent = updatedContent.replace(/\[FirmasColaboradores\]/gi, signaturesHtml);
-        updatedContent = updatedContent.replace(/\[Firmas\]/gi, signaturesHtml);
-    } catch (e) { console.error("Error replacing HTML block placeholders:", e); }
-
-    // --- 5. (Opcional pero recomendado) Limpieza final de placeholders no encontrados ---
-    // Esto asegura que si algún placeholder [Algo] no se pudo reemplazar, se quite antes de enviar a la IA
-     // Comentado por ahora, ya que la IA podría necesitar verlos si están pendientes.
-     // console.log(">>> applyAllDataToContent: Cleaning up remaining placeholders...");
-     // updatedContent = updatedContent.replace(/\[[^\]]+\]/g, ""); // Elimina cualquier [placeholder] restante
-
-    console.log(`>>> applyAllDataToContent: Final content (first 200): ${updatedContent.substring(0, 200)}...`);
-    return updatedContent;
-    }, [selectedContract, editedContent, generalData, selectedParticipants, clients, participantPercentages, step]);
-
+    // --- CORREGIDO: Array de Dependencias Añadido ---
+    }, [
+        step,
+        editedContent,
+        selectedContract,
+        generalData,
+        selectedParticipants,
+        clients, // <-- Añadido clients
+        participantPercentages
+        // editorRef no se incluye directamente para evitar re-renders excesivos
+    ]); // <-- Cierre de useCallback con dependencias
     // — Build participants payload for the AI — (ADDED AS PER INSTRUCTIONS)
 const buildParticipantsPayload = (): ParticipantFinal[] =>
     selectedParticipants.map(email => { // <--- Aquí está el 'email' no usado también
@@ -434,14 +407,29 @@ const buildParticipantsPayload = (): ParticipantFinal[] =>
     const isGeneralDataComplete = !!generalData.jurisdiction && !!generalData.fecha && !!generalData.trackTitle;
 
     const hasRemainingPlaceholders = useCallback(() => {
-        if (!selectedContract && !editedContent) return false;
+        // No hay contrato ni contenido editado? Entonces no hay placeholders.
+        if (!selectedContract && !editedContent) {
+             console.log("hasRemainingPlaceholders: No contract or edited content.");
+             return false;
+        }
+    
         const finalContent = applyAllDataToContent();
-        // More specific check for common critical placeholders or any remaining [...]
-        // const criticalPlaceholders = ['[Jurisdiccion]', '[Fecha]', '[trackTitle]', '[FullName]', '[Email]', '[Firma]']; // Add more if needed
-        const remaining = finalContent.match(/\[[^\]]+\]/g) || [];
-        return remaining.length > 0;
-        // Optional: Check if any *critical* ones remain
-        // return remaining.some(p => criticalPlaceholders.some(cp => p.toLowerCase() === cp.toLowerCase()));
+    
+        // --- CORRECCIÓN: Verificar si finalContent es un string válido ANTES de .match() ---
+        if (typeof finalContent === 'string' && finalContent.trim()) {
+            // Es un string con contenido, podemos buscar placeholders
+            const remaining = finalContent.match(/\[[^\]]+\]/g); // Busca [[Algo]]
+            console.log("hasRemainingPlaceholders: Found placeholders:", remaining);
+            // Devuelve true si se encontró algún match (remaining no es null y tiene longitud > 0)
+            return remaining !== null && remaining.length > 0;
+        } else {
+            // Si finalContent es "", null, undefined, o solo espacios, asumimos que no hay placeholders válidos.
+            console.log("hasRemainingPlaceholders: finalContent is empty or invalid.");
+            return false;
+        }
+        // --------------------------------------------------------------------------
+    
+        // El array de dependencias ya incluye todo lo necesario
     }, [applyAllDataToContent, selectedContract, editedContent]);
 
     const isEditorReadyToSend =
@@ -849,12 +837,15 @@ const buildParticipantsPayload = (): ParticipantFinal[] =>
             const baseFontSize = 10;
             const baseLineHeight = baseFontSize * 1.4; // Adjust multiplier as needed
 
-            // Helper to add text, handle styles, and pagination
+                        // Helper to add text, handle styles, and pagination
             const addText = (text: string, options: { fontSize?: number; fontStyle?: string; isListItem?: boolean; listPrefix?: string; indent?: number } = {}) => {
-                if (!text?.trim()) return; // Skip empty text
+                if (!text?.trim()) return;
 
                 const fontSize = options.fontSize || baseFontSize;
-                const fontStyle = options.fontStyle || 'normal'; // 'normal', 'bold', 'italic', 'bolditalic'
+                // --- CORRECCIÓN: Definir fuente base ---
+                const fontName = 'helvetica'; // O 'times', 'courier', o una fuente que hayas añadido
+                // ---------------------------------------
+                const fontStyle = options.fontStyle || 'normal';
                 const lineHeight = fontSize * 1.4;
                 const indent = options.indent || 0;
                 const textX = margins.left + indent;
@@ -862,32 +853,36 @@ const buildParticipantsPayload = (): ParticipantFinal[] =>
 
                 pdf.setFontSize(fontSize);
                  try {
-                    // Set font style - using 'undefined' keeps the current font family
-                    pdf.setFont(undefined, fontStyle);
-                 } catch(e) {
-                    console.warn("jsPDF setFont style warning (usually ignorable):", e);
-                    // Fallback if needed: pdf.setFont('helvetica', fontStyle);
+                    // --- CORRECCIÓN: Pasar nombre de fuente y estilo ---
+                    pdf.setFont(fontName, fontStyle);
+                    // -------------------------------------------------
+                 } catch(e: unknown) {
+                    // Si setFont falla, podría ser que la fuente base no está disponible
+                    console.error(`jsPDF setFont error (Fuente: ${fontName}, Estilo: ${fontStyle}):`, e instanceof Error ? e.message : e);
+                    // Fallback a una fuente súper segura (puede no tener estilos)
+                    try { pdf.setFont('courier', 'normal'); } catch { /* Ignorar si todo falla */ }
                  }
 
-                // Split text to fit width
                 const lines = pdf.splitTextToSize(text, availableWidth);
 
-                                // --- CORREGIDO: Bucle forEach simplificado ---
-                                lines.forEach((line: string) => { // Solo recibe 'line'
-                                    // Añadir página nueva si es necesario
-                                    if (currentY + lineHeight > maxY) {
-                                        pdf.addPage();
-                                        currentY = margins.top;
-                                        pdf.setFontSize(fontSize); // Reaplicar tamaño
-                                        try { pdf.setFont(undefined, fontStyle); } // Reaplicar estilo
-                                        catch (e: unknown) { console.warn("jsPDF setFont new page warning:", e); } // Usa unknown
-                                    }
-                
-                                    // Añadir la línea de texto actual directamente
-                                    pdf.text(line, textX, currentY); // <-- Usa 'line' directamente
-                
-                                    currentY += lineHeight; // Mover a la siguiente posición Y
-                                });
+                lines.forEach((line: string) => {
+                    if (currentY + lineHeight > maxY) {
+                        pdf.addPage();
+                        currentY = margins.top;
+                        pdf.setFontSize(fontSize); // Reaplicar tamaño
+                        try {
+                            // --- CORRECCIÓN: Pasar nombre y estilo también en nueva página ---
+                            pdf.setFont(fontName, fontStyle);
+                            // -----------------------------------------------------------
+                         } catch(e: unknown) {
+                             console.warn("jsPDF setFont new page warning:", e);
+                             try { pdf.setFont('courier', 'normal'); } catch {}
+                         }
+                    }
+                    pdf.text(line, textX, currentY);
+                    currentY += lineHeight;
+                });
+            }; // Fin de addText
                                 // --- FIN CORRECCIÓN ---
 
             // --- Process the HTML content manually ---
