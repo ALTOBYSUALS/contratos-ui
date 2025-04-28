@@ -38,27 +38,24 @@ import {
 } from "lucide-react";
 // -----------------------
 
+// --- Tipos (asumiendo que están en '@/lib/types') ---
+import type { Client, Template, SentContract, GeneralContractData, ParticipantFinal } from '@/lib/types';
+// --- FIN DE LÍNEA A MANTENER ---
+
+import React, { useState, useRef, useEffect, useCallback, ChangeEvent } from "react";
+
 const INITIAL_NEW_CLIENT_STATE: Partial<Omit<Client, "id" | "added" | "FullName" | "Firma">> = {
     firstName: "", lastName: "", email: "", phone: "", role: "", publisherIpi: "", dateOfBirth: "", passport: "", expirationDate: "", address: "", country: "", facebook: "", instagram: "", linkedin: "", twitter: "", labelName: "", labelEmail: "", labelPhone: "", labelAddress: "", labelCountry: "", publisherName: "", publisherEmail: "", publisherPhone: "", publisherAddress: "", publisherCountry: ""
 };
 const INITIAL_NEW_TEMPLATE_STATE = { title: "", category: "", description: "", content: "" };
 
-// Dentro del componente ContractLibrary
-
-// Asegúrate de que GeneralContractData esté disponible (importada o definida aquí)
-// Si está en lib/types.ts, necesitarás:
-// import type { GeneralContractData } from '@/lib/types'; // O la ruta correcta
-import type { Client, Template, SentContract, GeneralContractData, ParticipantFinal } from '@/lib/types';
-// --- FIN DE LÍNEA A MANTENER ---
-import React, { useState, useRef, useEffect, useCallback, ChangeEvent } from "react";
-
 
 // --- Helper Function: createClientObject ---
-const createClientObject = (data: Record<string, any>, idOverride?: string): Client => {
+const createClientObject = (data: Record<string, any>, idOverride?: string): Client => { // Manteniendo any aquí, ya que ESLint está en 'warn'
     const firstName = data.firstName?.trim() || "";
     const lastName = data.lastName?.trim() || "";
     let calculatedFullName = `${firstName} ${lastName}`.trim();
-    // Fallbacks for name calculation  
+    // Fallbacks for name calculation
     if (!calculatedFullName && data.FullName) calculatedFullName = data.FullName;
     if (!calculatedFullName && data.name) calculatedFullName = data.name;
     if (!calculatedFullName && data.labelName) calculatedFullName = data.labelName; // Use label name if person name missing
@@ -226,13 +223,12 @@ const ContractLibrary = () => { // <--- Inicio del componente
                 if (!sentContractsRes.ok) console.warn(`Enviados API Warning: ${sentContractsRes.status} ${sentContractsRes.statusText}`);
 
                 const templatesData: Template[] = await templatesRes.json();
-                // Cambio en Línea 229:
-                const clientsDataRaw: Record<string, any>[] = await clientsRes.json();
+                // --- CORRECCIÓN: Tipar correctamente clientsDataRaw ---
+                const clientsDataRaw: Record<string, any>[] = await clientsRes.json(); // <-- Tipo corregido
                 const sentContractsData: SentContract[] = sentContractsRes.ok ? await sentContractsRes.json() : [];
 
-                // Usa Record<string, any> para el mapeo seguro
-                // Cambio en Línea 233:
-                const clientsDataProcessed: Client[] = clientsDataRaw.map(clientRaw => createClientObject(clientRaw));
+                // --- CORRECCIÓN: Usar createClientObject sin 'as' ---
+                const clientsDataProcessed: Client[] = clientsDataRaw.map(clientRaw => createClientObject(clientRaw)); // <-- 'as' eliminado
 
                 // Actualiza estados
                 setTemplates(templatesData.sort((a, b) => a.title.localeCompare(b.title)));
@@ -259,12 +255,8 @@ const ContractLibrary = () => { // <--- Inicio del componente
 
     }, []); // <-- Array de dependencias vacío para que se ejecute solo una vez al montar
 
-    // ; // Punto y coma opcional aquí
 
-// --- Placeholder Replacement Logic ---
-// ... resto de tu componente ...
-    
-     // --- Placeholder Replacement Logic (con Logs y manejo de tipos y dependencias) ---
+    // --- Placeholder Replacement Logic (con Logs y manejo de tipos y dependencias) ---
      const applyAllDataToContent = useCallback(() => {
         console.log(`>>> applyAllDataToContent called. Current step: ${step}`); // Log inicial
 
@@ -316,9 +308,10 @@ const ContractLibrary = () => { // <--- Inicio del componente
         const participantReplacements: { [placeholder: string]: string } = {};
         if (selectedParticipants.length > 0 && clients.length > 0) {
             console.log(">>> applyAllDataToContent: Preparing participant replacements...");
-            selectedParticipants.forEach((_email) => { // Usa _email
-                const client = clients.find((c) => c.email === _email);
-                const percentageStr = (participantPercentages[_email] || 0).toFixed(2); // Usa _email
+            // --- CORRECCIÓN: Usar 'email' en lugar de '_email' ---
+            selectedParticipants.forEach((email) => { // <-- Corregido
+                const client = clients.find((c) => c.email === email); // <-- Corregido
+                const percentageStr = (participantPercentages[email] || 0).toFixed(2); // <-- Corregido
                 if (client) {
                     const clientPlaceholders: Record<string, string | undefined> = { /* ... pon aquí TODAS las claves que necesitas */
                         FullName: client.FullName, Name: client.name, FirstName: client.firstName,
@@ -359,11 +352,13 @@ const ContractLibrary = () => { // <--- Inicio del componente
         try {
             console.log(">>> applyAllDataToContent: Generating list/signature blocks...");
             // --- Usa const y map ---
-            const collaboratorsList = selectedParticipants.map(_email => { /* ... lógica para generar <li> ... */ }).join('');
-            const signaturesBlock = selectedParticipants.map(_email => { /* ... lógica para generar div de firma ... */ }).join('');
+             // --- CORRECCIÓN: Usar 'email' en lugar de '_email' ---
+            const collaboratorsList = selectedParticipants.map(email => { /* ... lógica para generar <li> ... */ }).join(''); // <-- Corregido
+            const signaturesBlock = selectedParticipants.map(email => { /* ... lógica para generar div de firma ... */ }).join(''); // <-- Corregido
             // --- Construye HTML final de listas ---
             const collaboratorListHtml = selectedParticipants.length > 0 ? `<ul>${collaboratorsList}</ul>` : "";
-            const collaboratorListNoPercentHtml = selectedParticipants.length > 0 ? `<ul>${selectedParticipants.map(_email => {/*...*/}).join('')}</ul>` : "";
+            // --- CORRECCIÓN: Usar 'email' en lugar de '_email' ---
+            const collaboratorListNoPercentHtml = selectedParticipants.length > 0 ? `<ul>${selectedParticipants.map(email => {/*...*/}).join('')}</ul>` : ""; // <-- Corregido
             const signaturesHtml = selectedParticipants.length > 0 ? `<div style="margin-top: 40px;">${signaturesBlock}</div>` : "";
             // --- Reemplaza ---
             updatedContent = updatedContent.replace(/\[ListaColaboradoresConPorcentaje\]/gi, collaboratorListHtml);
@@ -386,17 +381,9 @@ const ContractLibrary = () => { // <--- Inicio del componente
         participantPercentages
         // editorRef no se incluye directamente para evitar re-renders excesivos
     ]); // <-- Cierre de useCallback con dependencias
-    // — Build participants payload for the AI — (ADDED AS PER INSTRUCTIONS)
-const buildParticipantsPayload = (): ParticipantFinal[] =>
-    selectedParticipants.map(email => { // <--- Aquí está el 'email' no usado también
-      const cli = clients.find(c => c.email === email);
-      return {
-        email, // <-- Usando 'email' aquí
-        name: cli?.FullName || cli?.name || email,
-        role: cli?.role || 'Participante',
-        percentage: participantPercentages[email] ?? 0
-      }
-    });
+
+    // --- CORRECCIÓN: buildParticipantsPayload ELIMINADO porque no se usa ---
+
 
     // --- Derived Calculations ---
     const totalPercentage = selectedParticipants.reduce((sum, email) => sum + (participantPercentages[email] || 0), 0);
@@ -418,9 +405,9 @@ const buildParticipantsPayload = (): ParticipantFinal[] =>
              console.log("hasRemainingPlaceholders: No contract or edited content.");
              return false;
         }
-    
+
         const finalContent = applyAllDataToContent();
-    
+
         // --- CORRECCIÓN: Verificar si finalContent es un string válido ANTES de .match() ---
         if (typeof finalContent === 'string' && finalContent.trim()) {
             // Es un string con contenido, podemos buscar placeholders
@@ -434,7 +421,7 @@ const buildParticipantsPayload = (): ParticipantFinal[] =>
             return false;
         }
         // --------------------------------------------------------------------------
-    
+
         // El array de dependencias ya incluye todo lo necesario
     }, [applyAllDataToContent, selectedContract, editedContent]);
 
@@ -661,6 +648,8 @@ const buildParticipantsPayload = (): ParticipantFinal[] =>
         // If unchecked, remove percentage entry
         if (!checked) {
             setParticipantPercentages(prev => {
+                 // --- CORRECCIÓN: Desactivar regla ESLint para '_' ---
+                // eslint-disable-next-line @typescript-eslint/no-unused-vars
                 const { [clientEmail]: _, ...rest } = prev;
                 return rest;
             });
@@ -742,7 +731,8 @@ const buildParticipantsPayload = (): ParticipantFinal[] =>
             // setSelectedContract(savedTemplate); setEditedContent(savedTemplate.content); setStep(1);
         } catch (err: unknown) {
             console.error("Error saving uploaded template:", err);
-            toast.error("Error al guardar plantilla subida", { description: err.message });
+            const message = err instanceof Error ? err.message : String(err); // Safe error message access
+            toast.error("Error al guardar plantilla subida", { description: message });
             // Handle potential rollback or cleanup if needed
         } finally {
             setIsSubmitting(false);
@@ -808,7 +798,8 @@ const buildParticipantsPayload = (): ParticipantFinal[] =>
 
         } catch (error: unknown) {
             console.error("Error procesando archivo:", error);
-            toast.error("Error al procesar archivo", { id: toastId, description: error.message });
+            const message = error instanceof Error ? error.message : String(error); // Safe error message access
+            toast.error("Error al procesar archivo", { id: toastId, description: message });
 
         } finally {
             setIsSubmitting(false); // End processing indicator
@@ -843,14 +834,12 @@ const buildParticipantsPayload = (): ParticipantFinal[] =>
             const baseFontSize = 10;
             const baseLineHeight = baseFontSize * 1.4; // Adjust multiplier as needed
 
-                        // Helper to add text, handle styles, and pagination
+            // Helper to add text, handle styles, and pagination
             const addText = (text: string, options: { fontSize?: number; fontStyle?: string; isListItem?: boolean; listPrefix?: string; indent?: number } = {}) => {
                 if (!text?.trim()) return;
 
                 const fontSize = options.fontSize || baseFontSize;
-                // --- CORRECCIÓN: Definir fuente base ---
-                const fontName = 'helvetica'; // O 'times', 'courier', o una fuente que hayas añadido
-                // ---------------------------------------
+                const fontName = 'helvetica'; // Base font
                 const fontStyle = options.fontStyle || 'normal';
                 const lineHeight = fontSize * 1.4;
                 const indent = options.indent || 0;
@@ -859,13 +848,9 @@ const buildParticipantsPayload = (): ParticipantFinal[] =>
 
                 pdf.setFontSize(fontSize);
                  try {
-                    // --- CORRECCIÓN: Pasar nombre de fuente y estilo ---
                     pdf.setFont(fontName, fontStyle);
-                    // -------------------------------------------------
                  } catch(e: unknown) {
-                    // Si setFont falla, podría ser que la fuente base no está disponible
                     console.error(`jsPDF setFont error (Fuente: ${fontName}, Estilo: ${fontStyle}):`, e instanceof Error ? e.message : e);
-                    // Fallback a una fuente súper segura (puede no tener estilos)
                     try { pdf.setFont('courier', 'normal'); } catch { /* Ignorar si todo falla */ }
                  }
 
@@ -875,11 +860,9 @@ const buildParticipantsPayload = (): ParticipantFinal[] =>
                     if (currentY + lineHeight > maxY) {
                         pdf.addPage();
                         currentY = margins.top;
-                        pdf.setFontSize(fontSize); // Reaplicar tamaño
+                        pdf.setFontSize(fontSize); // Reapply size
                         try {
-                            // --- CORRECCIÓN: Pasar nombre y estilo también en nueva página ---
-                            pdf.setFont(fontName, fontStyle);
-                            // -----------------------------------------------------------
+                            pdf.setFont(fontName, fontStyle); // Reapply font/style
                          } catch(e: unknown) {
                              console.warn("jsPDF setFont new page warning:", e);
                              try { pdf.setFont('courier', 'normal'); } catch {}
@@ -889,15 +872,10 @@ const buildParticipantsPayload = (): ParticipantFinal[] =>
                     currentY += lineHeight;
                 });
             }; // Fin de addText
-                                // --- FIN CORRECCIÓN ---
 
             // --- Process the HTML content manually ---
             const tempDiv = document.createElement("div");
             tempDiv.innerHTML = content; // Parse the HTML string
-
-            // --- Add Document Title (Optional, could be part of content) ---
-            // addText(title, { fontSize: 16, fontStyle: 'bold' });
-            // currentY += baseLineHeight * 0.5; // Add some space after title
 
             // Recursive function to process DOM nodes
             const processNode = (node: Node, currentStyle: { fontSize?: number; fontStyle?: string; indent?: number; listLevel?: number; listType?: 'ol' | 'ul'; listCounter?: number } = {}) => {
@@ -906,79 +884,69 @@ const buildParticipantsPayload = (): ParticipantFinal[] =>
                 } else if (node.nodeType === Node.ELEMENT_NODE) {
                     const el = node as Element;
                     const tagName = el.tagName.toLowerCase();
-                    let newStyle = { ...currentStyle }; // Inherit styles
+                    // --- CORRECCIÓN: Usar const para newStyle ---
+                    const newStyle = { ...currentStyle }; // Inherit styles
 
                     // Basic Style Tags
                     if (tagName === 'strong' || tagName === 'b') newStyle.fontStyle = currentStyle.fontStyle === 'italic' ? 'bolditalic' : 'bold';
                     if (tagName === 'em' || tagName === 'i') newStyle.fontStyle = currentStyle.fontStyle === 'bold' ? 'bolditalic' : 'italic';
-                    // Add underline/strikethrough? (jsPDF doesn't support directly via setFont, requires manual lines)
 
                     // Heading Tags
                     if (tagName.match(/^h[1-6]$/)) {
                         const level = parseInt(tagName[1]);
-                        newStyle.fontSize = Math.max(baseFontSize, 16 - (level - 1) * 2); // Example sizing
+                        newStyle.fontSize = Math.max(baseFontSize, 16 - (level - 1) * 2);
                         newStyle.fontStyle = 'bold';
-                         // Add space before headings (except H1 at start)
                          if (currentY > margins.top + baseLineHeight) currentY += baseLineHeight * 0.5;
                     }
 
-                    // Paragraphs and Divs (Treat as blocks)
+                    // Paragraphs and Divs
                     if (tagName === 'p' || tagName === 'div' || tagName.match(/^h[1-6]$/) || tagName === 'blockquote') {
-                         // Process children first
-                        Array.from(el.childNodes).forEach(child => processNode(child, newStyle));
-                         // Add space after the block element
+                         Array.from(el.childNodes).forEach(child => processNode(child, newStyle));
                          currentY += baseLineHeight * 0.3;
-                         if (tagName === 'blockquote') newStyle.indent = (newStyle.indent || 0) + 20; // Indent blockquotes
+                         if (tagName === 'blockquote') newStyle.indent = (newStyle.indent || 0) + 20;
                     }
                     // Lists
                     else if (tagName === 'ul' || tagName === 'ol') {
                         const listLevel = (currentStyle.listLevel || 0) + 1;
-                        const indentSize = 20; // Points per indent level
+                        const indentSize = 20;
                         newStyle.indent = (currentStyle.indent || 0) + indentSize;
                         newStyle.listLevel = listLevel;
                         newStyle.listType = tagName as ('ul' | 'ol');
-                        newStyle.listCounter = 1; // Reset counter for OL
+                        newStyle.listCounter = 1;
 
                         Array.from(el.children).forEach(li => {
                             if (li.tagName.toLowerCase() === 'li') {
                                  const prefix = newStyle.listType === 'ol' ? `${newStyle.listCounter++}. ` : '- ';
-                                 // Process children of li with list item flag and prefix
                                  Array.from(li.childNodes).forEach(child => processNode(child, { ...newStyle, isListItem: true, listPrefix: prefix }));
-                                 // Add small space between list items if needed
-                                 // currentY += baseLineHeight * 0.1;
                             }
                          });
-                         // Add space after the entire list
                          currentY += baseLineHeight * 0.3;
                     }
                     // Line Break
                     else if (tagName === 'br') {
-                        currentY += baseLineHeight; // Add a line break
+                        currentY += baseLineHeight;
                     }
                     // Horizontal Rule
                     else if (tagName === 'hr') {
-                         if (currentY + 10 > maxY) { pdf.addPage(); currentY = margins.top; } // Check page break
-                         pdf.setDrawColor(150, 150, 150); // Gray line
+                         if (currentY + 10 > maxY) { pdf.addPage(); currentY = margins.top; }
+                         pdf.setDrawColor(150, 150, 150);
                          pdf.line(margins.left, currentY, margins.left + contentWidth, currentY);
-                         currentY += baseLineHeight; // Space after rule
+                         currentY += baseLineHeight;
                     }
-                    // Image Tag (Basic implementation - might need refinement for size/position)
+                    // Image Tag
                     else if (tagName === 'img') {
-                         const imgSrc = (el as HTMLImageElement).src;
-                         // Basic handling: Assume base64, might need fetch for external URLs
-                         // This part is complex to get right regarding size and placement within text flow.
-                         // For simplicity, we might just add a placeholder or skip it.
+                         // --- CORRECCIÓN: Eliminar variable imgSrc no usada ---
                          console.warn("PDF Export: Images are currently not fully supported in manual PDF generation.");
                          addText("[Imagen no soportada en PDF]", { fontStyle: 'italic', fontSize: 8 });
                     }
-                    // Default: Process children of unrecognized tags
+                    // Default: Process children
                     else {
                         Array.from(el.childNodes).forEach(child => processNode(child, newStyle));
                     }
                 }
             };
 
-            // Start processing from the root of the parsed HTML
+            // Start processing
             processNode(tempDiv);
 
             // Save the PDF
@@ -987,7 +955,8 @@ const buildParticipantsPayload = (): ParticipantFinal[] =>
 
         } catch (e: unknown) {
             console.error("Error generando PDF manual:", e);
-            toast.error("Error al generar PDF", { id: toastId, description: `Ocurrió un error: ${e.message}` });
+            const message = e instanceof Error ? e.message : String(e); // Safe error message access
+            toast.error("Error al generar PDF", { id: toastId, description: `Ocurrió un error: ${message}` });
         } finally {
             setIsSubmitting(false);
         }
@@ -1009,8 +978,7 @@ const buildParticipantsPayload = (): ParticipantFinal[] =>
             const processNode = (node: Node): (Paragraph | TextRun)[] => {
                 const elements: (Paragraph | TextRun)[] = [];
 
-                if (node.nodeType === Node.TEXT_NODE && node.textContent) { // Check for any text content, even whitespace initially
-                    // Check parent styles for basic formatting
+                if (node.nodeType === Node.TEXT_NODE && node.textContent) {
                     let isBold = false, isItalic = false, isUnderline = false, isStrike = false;
                     let current: Node | null = node.parentNode;
                     while (current && current !== tempDiv) {
@@ -1018,36 +986,26 @@ const buildParticipantsPayload = (): ParticipantFinal[] =>
                         if (tagName === 'strong' || tagName === 'b') isBold = true;
                         if (tagName === 'em' || tagName === 'i') isItalic = true;
                         if (tagName === 'u') isUnderline = true;
-                        if (tagName === 's' || tagName === 'strike' || tagName === 'del') isStrike = true; // Add 'del'
+                        if (tagName === 's' || tagName === 'strike' || tagName === 'del') isStrike = true;
                         current = current.parentNode;
                     }
-                    // Only add TextRun if there's actual non-whitespace text
                     if (node.textContent.trim()) {
                         elements.push(new TextRun({
-                            text: node.textContent, // Keep original whitespace within the run
+                            text: node.textContent,
                             bold: isBold,
                             italics: isItalic,
-                            underline: isUnderline ? {} : undefined, // Use empty object for underline
+                            underline: isUnderline ? {} : undefined,
                             strike: isStrike,
-                            // Add font size/family here if needed (more complex)
                         }));
-                    } else {
-                         // Handle potential significant whitespace (e.g., multiple spaces) if necessary
-                         // elements.push(new TextRun({ text: node.textContent }));
                     }
                 } else if (node.nodeType === Node.ELEMENT_NODE) {
                     const el = node as HTMLElement;
                     const tagName = el.tagName.toLowerCase();
-
-                    // Process children first to gather TextRuns and nested Paragraphs
                     const children = Array.from(el.childNodes).flatMap(child => processNode(child));
 
-                    // Handle block elements (Paragraphs, Headings, Divs, Blockquotes)
+                    // Handle block elements
                     if (['p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote'].includes(tagName)) {
-                        // Declarar la variable para el valor del Enum
                         let headingLevelValue: typeof HeadingLevel[keyof typeof HeadingLevel] | undefined = undefined;
-
-                        // --- CORRECCIÓN: Usar SWITCH para mapear tag a Enum VALOR ---
                         if (tagName.match(/^h[1-6]$/)) {
                             switch (tagName) {
                                 case 'h1': headingLevelValue = HeadingLevel.HEADING_1; break;
@@ -1056,34 +1014,26 @@ const buildParticipantsPayload = (): ParticipantFinal[] =>
                                 case 'h4': headingLevelValue = HeadingLevel.HEADING_4; break;
                                 case 'h5': headingLevelValue = HeadingLevel.HEADING_5; break;
                                 case 'h6': headingLevelValue = HeadingLevel.HEADING_6; break;
-                                // No necesitamos default porque ya filtramos h1-h6
                             }
-                            // Log si por alguna razón no se mapeó (no debería pasar)
                              if (headingLevelValue === undefined) {
                                  console.warn(`Could not map heading level for ${tagName}`);
                              }
                         }
-
-                        // Filter out only the TextRuns from direct children for this paragraph
                         const textRunsInChildren = children.filter(c => c instanceof TextRun) as TextRun[];
-
-                        // Create a paragraph only if it contains text runs or is meant to be an empty paragraph (e.g., <p></p>)
-                        if (textRunsInChildren.length > 0 || tagName === 'p') { // Create P even if empty
+                        if (textRunsInChildren.length > 0 || tagName === 'p') {
                             elements.push(new Paragraph({
                                 children: textRunsInChildren,
-                                heading: headingLevelValue, // Use the correctly mapped enum value
-                                style: tagName === 'blockquote' ? "IntenseQuote" : undefined, // Use a built-in style for quotes
-                                spacing: { after: tagName.match(/^h/) ? 200 : 100 }, // Add more space after headings
-                                // Add alignment if needed (e.g., based on style attribute)
+                                heading: headingLevelValue,
+                                style: tagName === 'blockquote' ? "IntenseQuote" : undefined,
+                                spacing: { after: tagName.match(/^h/) ? 200 : 100 },
                             }));
                         }
-
-                        // Append any Paragraphs that came from nested block elements (e.g., a P inside a DIV)
                         elements.push(...children.filter(c => c instanceof Paragraph));
                     }
                     // Handle lists
                     else if (tagName === 'ul' || tagName === 'ol') {
-                         Array.from(el.children).forEach((li, index) => {
+                        // --- CORRECCIÓN: Remover 'index' no usado ---
+                         Array.from(el.children).forEach((li) => { // <-- 'index' removido
                              if(li.tagName.toLowerCase() === 'li') {
                                 const liContentRuns = Array.from(li.childNodes)
                                     .flatMap(child => processNode(child))
@@ -1092,107 +1042,70 @@ const buildParticipantsPayload = (): ParticipantFinal[] =>
                                 if (liContentRuns.length > 0) {
                                     elements.push(new Paragraph({
                                         children: liContentRuns,
-                                        // Use standard numbering reference
                                         numbering: tagName === 'ol'
                                             ? { reference: "default-numbering", level: 0 }
                                             : undefined,
                                         bullet: tagName === 'ul'
                                             ? { level: 0 }
                                             : undefined,
-                                        // Indentation might be automatic with numbering/bullet, but can be set explicitly
-                                        // indent: { left: 720 }, // 720 TWIPs = 0.5 inch
-                                        spacing: { after: 50 } // Small space after list items
+                                        spacing: { after: 50 }
                                     }));
                                 } else {
-                                     // Handle empty <li> elements if necessary (e.g., create empty paragraph)
                                      elements.push(new Paragraph({ bullet: tagName === 'ul' ? { level: 0 } : undefined, numbering: tagName === 'ol' ? { reference: "default-numbering", level: 0 } : undefined}));
                                 }
                              }
                          });
                     }
-                    // Handle line breaks (<br>) - create an empty paragraph? Often redundant if inside <p>.
+                    // Handle <br> (omit for simplicity)
                     else if (tagName === 'br') {
-                         // Let's treat BR as potentially creating a new line within a paragraph if possible,
-                         // but docx Paragraphs handle block spacing. Adding empty P might be too much.
-                         // We can rely on P spacing or potentially add a TextRun with a line break char if needed.
-                         // elements.push(new Paragraph({})); // Might add too much space.
+                        // elements.push(new Paragraph({}));
                     }
-                     // Handle horizontal rule (<hr>) - Add a paragraph with a border?
+                     // Handle <hr>
                      else if (tagName === 'hr') {
                         elements.push(new Paragraph({
-                            children: [], // Empty paragraph
-                            border: { bottom: { color: "auto", space: 1, style: "single", size: 6 } } // Basic bottom border
+                            children: [],
+                            border: { bottom: { color: "auto", space: 1, style: "single", size: 6 } }
                         }));
                      }
-                    // Handle Images (<img>) - Basic insertion
+                    // Handle <img> (placeholder)
                     else if (tagName === 'img') {
                         const imgElement = el as HTMLImageElement;
                         const src = imgElement.src;
-                        // Fetching and embedding images is complex. Requires fetching blob/base64.
-                        // Simple placeholder for now.
                         console.warn("Word Export: Images require fetching/embedding - currently adding placeholder.");
                         elements.push(new Paragraph({
                             children: [new TextRun({ text: `[Image: ${imgElement.alt || src.substring(0, 50)}]`, italics: true })]
                         }));
                     }
-                    // Inline elements (like <span>) - their formatting is handled when processing their text node children.
-                    // Just pass their processed children up.
+                    // Pass children up for inline elements
                     else {
                         elements.push(...children);
                     }
                 }
-
                 return elements;
             };
 
             const docxElements = processNode(tempDiv);
-            // Filter out potential undefined/null elements and ensure we only have Paragraphs at the top level
             const finalDocxChildren = docxElements.filter(el => el instanceof Paragraph) as Paragraph[];
-
-            // Ensure document is not empty
             if (finalDocxChildren.length === 0) {
                 finalDocxChildren.push(new Paragraph({ children: [new TextRun("")] }));
             }
 
             const doc = new Document({
-                // Define numbering configuration for ordered lists
                 numbering: {
-                    config: [
-                        {
-                            reference: "default-numbering", // Reference used in paragraphs
-                            levels: [
-                                {
-                                    level: 0,
-                                    format: "decimal", // Standard 1, 2, 3...
-                                    text: "%1.", // Format: "1.", "2.", etc.
-                                    alignment: AlignmentType.START,
-                                    style: { paragraph: { indent: { left: 720, hanging: 360 } } } // Standard indentation
-                                },
-                                // Add more levels if needed (e.g., for nested lists)
-                            ],
-                        },
-                    ],
+                    config: [ {
+                            reference: "default-numbering",
+                            levels: [ { level: 0, format: "decimal", text: "%1.", alignment: AlignmentType.START, style: { paragraph: { indent: { left: 720, hanging: 360 } } } } ],
+                        }, ],
                 },
-                // Define styles if needed (e.g., for blockquotes)
                 styles: {
-                    paragraphStyles: [
-                         { id: "IntenseQuote", name: "Intense Quote", basedOn: "Normal", next: "Normal",
-                           run: { italics: true, color: "5A5A5A" }, // Example styling
-                           paragraph: { indent: { left: 720 }, spacing: { before: 100, after: 100 } }
-                         }
-                    ]
+                    paragraphStyles: [ { id: "IntenseQuote", name: "Intense Quote", basedOn: "Normal", next: "Normal", run: { italics: true, color: "5A5A5A" }, paragraph: { indent: { left: 720 }, spacing: { before: 100, after: 100 } } } ]
                 },
-                sections: [{
-                    properties: {},
-                    children: finalDocxChildren
-                }]
+                sections: [{ properties: {}, children: finalDocxChildren }]
             });
 
-            // Pack document into a Blob
+            // Pack and download
             const buffer = await Packer.toBuffer(doc);
             const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
-
-            // Trigger download
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
@@ -1205,94 +1118,125 @@ const buildParticipantsPayload = (): ParticipantFinal[] =>
             toast.success("Word Descargado", { id: toastId, description: `${filename}` });
         } catch (e: unknown) {
             console.error("Error generando Word:", e);
-            toast.error("Error al generar Word", { id: toastId, description: `Ocurrió un error: ${e.message}` });
+            const message = e instanceof Error ? e.message : String(e); // Safe error message access
+            toast.error("Error al generar Word", { id: toastId, description: `Ocurrió un error: ${message}` });
         } finally {
              setIsSubmitting(false);
         }
     };
 
-// Wrapper for download buttons (REVISED FOR PDF generation via Backend API)
-const handleDownload = async (format: "pdf" | "word" = "pdf") => {
-    // Indicar al usuario que algo está sucediendo
-    setIsSubmitting(true);
-    const toastId = toast.loading(`Generando ${format}...`, { duration: format === 'pdf' ? 15000 : 5000 }); // Más tiempo para PDF
+    // Wrapper for download buttons (REVISED FOR PDF generation via Backend API)
+    const handleDownload = async (format: "pdf" | "word" = "pdf") => {
+        setIsSubmitting(true);
+        const toastId = toast.loading(`Generando ${format}...`, { duration: format === 'pdf' ? 15000 : 5000 });
 
-    try {
-        // ***** PASO 1: Obtener el HTML FINAL pre-rellenado *****
-        // Llama a tu función applyAllDataToContent actualizada
-        const finalHtmlContent = applyAllDataToContent();
-        // Usa el título del track como principal, o el de la plantilla como fallback
-        const title = generalData.trackTitle || selectedContract?.title || "documento";
+        try {
+            const finalHtmlContent = applyAllDataToContent();
+            const title = generalData.trackTitle || selectedContract?.title || "documento";
 
-        // Verifica si hay contenido para generar
-        if (!finalHtmlContent?.trim()) {
-            toast.error("Contenido vacío", { id: toastId, description: "No hay nada para generar el documento." });
-            setIsSubmitting(false); // Detener el estado de envío
-            return; // No continuar si no hay contenido
-        }
-
-        // ***** PASO 2: Decidir cómo generar según el formato *****
-        if (format === "pdf") {
-            // --- Generación de PDF vía Backend (Puppeteer) ---
-            console.log(">>> Frontend: Requesting PDF generation from backend for title:", title);
-            const response = await fetch('/api/generate-pdf', { // Llama a tu NUEVA ruta backend
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    htmlContent: finalHtmlContent, // Envía el HTML pre-rellenado
-                    title: title                   // Envía el título para el nombre de archivo
-                }),
-            });
-
-            if (!response.ok) {
-                // Intenta obtener un mensaje de error más específico del backend
-                let errorMsg = `Error del servidor (${response.status})`;
-                try {
-                    const errData = await response.json();
-                    errorMsg = errData.error || errorMsg;
-                } catch (e) { /* Ignora si la respuesta de error no es JSON */ }
-                console.error(">>> Frontend: PDF generation API error:", response.status, errorMsg);
-                throw new Error(errorMsg); // Lanza el error para que lo capture el catch
+            if (!finalHtmlContent?.trim()) {
+                toast.error("Contenido vacío", { id: toastId, description: "No hay nada para generar el documento." });
+                setIsSubmitting(false);
+                return;
             }
 
-            // --- Descargar el Blob del PDF recibido del backend ---
-            console.log(">>> Frontend: PDF response OK, processing Blob...");
-            const blob = await response.blob(); // Obtiene el PDF como Blob
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            // Crear nombre de archivo seguro
-            const safeTitle = title.replace(/[^\w\s.-]/g, "").replace(/\s+/g, "_");
-            a.download = `${safeTitle}.pdf`;
-            document.body.appendChild(a); // Necesario para que funcione en algunos navegadores
-            a.click(); // Inicia la descarga
-            a.remove(); // Limpia el elemento 'a' del DOM
-            window.URL.revokeObjectURL(url); // Libera la URL del objeto y memoria
-            console.log(">>> Frontend: PDF download triggered for:", a.download);
+            if (format === "pdf") {
+                console.log(">>> Frontend: Requesting PDF generation from backend for title:", title);
+                const response = await fetch('/api/generate-pdf', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', },
+                    body: JSON.stringify({ htmlContent: finalHtmlContent, title: title }),
+                });
 
-            toast.success("PDF Descargado", { id: toastId, description: "El archivo se ha generado con formato." });
+                if (!response.ok) {
+                    let errorMsg = `Error del servidor (${response.status})`;
+                    try { const errData = await response.json(); errorMsg = errData.error || errorMsg; }
+                    // --- CORRECCIÓN: Usar 'catch' sin variable ---
+                    catch { /* Ignora si la respuesta de error no es JSON */ } // <-- 'e' removido
+                    console.error(">>> Frontend: PDF generation API error:", response.status, errorMsg);
+                    throw new Error(errorMsg);
+                }
 
-        } else { // format === "word"
-            // --- Generación de Word (sin cambios, usa la librería local 'docx') ---
-            console.log(">>> Frontend: Generating Word document locally...");
-            // Llama a tu función existente que usa la librería 'docx'
-            await downloadWordContent(finalHtmlContent, title);
-             // Asegúrate que downloadWordContent maneje su propio toast o quita el dismiss si lo hace
-             if (document.getElementById(String(toastId))) {
-                // Si downloadWordContent no muestra su propio toast de éxito/error, puedes hacerlo aquí
-                // toast.success("Word Descargado", { id: toastId });
-                toast.dismiss(toastId); // O simplemente cierra el de "Generando..."
-             }
+                console.log(">>> Frontend: PDF response OK, processing Blob...");
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                const safeTitle = title.replace(/[^\w\s.-]/g, "").replace(/\s+/g, "_");
+                a.download = `${safeTitle}.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+                console.log(">>> Frontend: PDF download triggered for:", a.download);
+
+                toast.success("PDF Descargado", { id: toastId, description: "El archivo se ha generado con formato." });
+
+            } else { // format === "word"
+                console.log(">>> Frontend: Generating Word document locally...");
+                await downloadWordContent(finalHtmlContent, title);
+                 if (document.getElementById(String(toastId))) {
+                    toast.dismiss(toastId);
+                 }
+            }
+        } catch (error: unknown) {
+            console.error(`>>> Frontend: Error generating ${format}:`, error);
+            const message = error instanceof Error ? error.message : String(error); // Safe error message access
+            toast.error(`Error al generar ${format}`, { id: toastId, description: message });
+        } finally {
+            setIsSubmitting(false);
         }
-    } catch (error: unknown) {
-        console.error(`>>> Frontend: Error generating ${format}:`, error);
-        toast.error(`Error al generar ${format}`, { id: toastId, description: error.message });
-    } finally {
-        setIsSubmitting(false); // Asegúrate de resetear el estado de carga
-    }
-};
+    };
+
+
+    // --- API Interaction Functions ---
+
+    // Helper to save a new client (used by sidebar form)
+    const handleSaveClient = async () => {
+         // Basic validation
+         if (!newClient.firstName?.trim() || !newClient.lastName?.trim() || !newClient.email?.trim()) {
+             toast.error("Campos Requeridos", { description: "Nombre, Apellido y Email son obligatorios." });
+             return;
+         }
+         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+         if (!emailRegex.test(newClient.email)) {
+             toast.error("Email Inválido"); return;
+         }
+         if (clients.some((c) => c.email.toLowerCase() === newClient.email?.toLowerCase())) {
+             toast.error("Email Duplicado", { description: "Este email ya está registrado." });
+             return;
+         }
+
+         setIsSubmitting(true);
+         try {
+             // Create the full client object using the helper
+             const clientPayload = createClientObject(newClient);
+
+             const res = await fetch('/api/clients', {
+                 method: 'POST',
+                 headers: { 'Content-Type': 'application/json' },
+                 body: JSON.stringify(clientPayload) // Send the full object expected by createClientObject structure
+             });
+             const savedClientData = await res.json();
+             if (!res.ok) {
+                 throw new Error(savedClientData.error || `Error del servidor (${res.status})`);
+             }
+             // Process the response with createClientObject to ensure consistency
+             const savedClient = createClientObject(savedClientData);
+
+             setClients((prev) => [...prev, savedClient].sort((a, b) => (a.FullName || '').localeCompare(b.FullName || '')));
+             setNewClient(INITIAL_NEW_CLIENT_STATE); // Reset form
+             setShowAddClientSidebar(false); // Close sidebar
+             toast.success("Cliente Añadido", { description: `"${savedClient.name}" añadido correctamente.` });
+
+         } catch (err: unknown) {
+             console.error("Error saving client:", err);
+             const message = err instanceof Error ? err.message : String(err); // Safe error message access
+             toast.error("Error al guardar cliente", { description: message });
+         } finally {
+             setIsSubmitting(false);
+         }
+     };
 
     const handleUpdateClient = async () => {
         if (!editingClient || !Object.keys(editedClientData).length) {
@@ -1346,7 +1290,8 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
 
         } catch (err: unknown) {
             console.error("Error updating client:", err);
-            toast.error("Error al actualizar cliente", { description: err.message });
+             const message = err instanceof Error ? err.message : String(err); // Safe error message access
+            toast.error("Error al actualizar cliente", { description: message });
         } finally {
             setIsSubmitting(false);
         }
@@ -1366,12 +1311,12 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
             const res = await fetch(`/api/clients/${clientToDelete.id}`, { method: 'DELETE' });
 
             if (!res.ok) {
-                 // Try to parse error message from JSON response
                  let errorMsg = `Error del servidor (${res.status})`;
                  try {
                      const errData = await res.json();
                      if (errData.error) errorMsg = errData.error;
-                 } catch (parseError) {
+                 // --- CORRECCIÓN: Usar 'catch' sin variable ---
+                 } catch { // <-- 'parseError' removido
                      // Ignore if response is not JSON
                  }
                  throw new Error(errorMsg);
@@ -1381,8 +1326,10 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
             setClients((prev) => prev.filter((c) => c.id !== clientToDelete.id));
             // Remove client from participants if they were selected
             setSelectedParticipants((prev) => prev.filter((email) => email !== clientToDelete.email));
+             // --- CORRECCIÓN: Desactivar regla ESLint para '_' ---
             setParticipantPercentages((prev) => {
-                const { [clientToDelete.email]: _, ...rest } = prev;
+                 // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                const { [clientToDelete.email]: _, ...rest } = prev; // <-- Comentario añadido
                 return rest;
             });
 
@@ -1397,7 +1344,8 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
             }
         } catch (err: unknown) {
             console.error("Error deleting client:", err);
-            toast.error("Error al eliminar cliente", { description: err.message });
+             const message = err instanceof Error ? err.message : String(err); // Safe error message access
+            toast.error("Error al eliminar cliente", { description: message });
         } finally {
             setIsSubmitting(false);
         }
@@ -1445,7 +1393,8 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
             toast.success("Plantilla Creada", { description: `"${savedTemplate.title}" creada.` });
         } catch (err: unknown) {
             console.error("Error creating template:", err);
-            toast.error("Error al crear plantilla", { description: err.message });
+            const message = err instanceof Error ? err.message : String(err); // Safe error message access
+            toast.error("Error al crear plantilla", { description: message });
         } finally {
             setIsSubmitting(false);
         }
@@ -1497,7 +1446,8 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
 
         } catch (err: unknown) {
             console.error("Error updating template:", err);
-            toast.error("Error al actualizar plantilla", { description: err.message });
+            const message = err instanceof Error ? err.message : String(err); // Safe error message access
+            toast.error("Error al actualizar plantilla", { description: message });
         } finally {
             setIsSubmitting(false);
         }
@@ -1519,7 +1469,8 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
 
             if (!res.ok) {
                  let errorMsg = `Error del servidor (${res.status})`;
-                 try { const errData = await res.json(); if (errData.error) errorMsg = errData.error; } catch (e) {}
+                 // --- CORRECCIÓN: Usar 'catch' sin variable ---
+                 try { const errData = await res.json(); if (errData.error) errorMsg = errData.error; } catch {} // <-- 'e' removido
                  throw new Error(errorMsg);
             }
 
@@ -1539,14 +1490,14 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
             }
         } catch (err: unknown) {
             console.error("Error deleting template:", err);
-            toast.error("Error al eliminar plantilla", { description: err.message });
+            const message = err instanceof Error ? err.message : String(err); // Safe error message access
+            toast.error("Error al eliminar plantilla", { description: message });
         } finally {
             setIsSubmitting(false);
         }
     };
 
    // --- Function to GENERATE the final contract with AI ---
-       // --- Function to GENERATE the final contract with AI ---
        const handleFinalizeWithAI = async () => {
         /* --- Validaciones previas (sin cambios) ------------------------------ */
         if (!selectedContract) { toast.warning('Selecciona una plantilla primero'); return }
@@ -1556,10 +1507,8 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
 
         // ***** PASO 1.1: Pre-rellenar el contenido ANTES de enviar *****
         console.log(">>> Frontend: Applying user data to template before sending to AI...");
-        // Llama a la función que DEBE tener la lógica de reemplazo actualizada (ver Paso 2)
         const contentToSendToAI = applyAllDataToContent();
 
-        // Validación adicional: ¿El contenido pre-rellenado está vacío?
         if (!contentToSendToAI?.trim()) {
             toast.error("Error al preparar contenido", { description: "El contenido resultante después de aplicar los datos está vacío. Revisa la función applyAllDataToContent y la plantilla." });
             return;
@@ -1568,15 +1517,8 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
 
         /* --- Construir payload (AJUSTADO) ------------------------------------ */
         const payload = {
-          // ***** PASO 1.2: Envía el contenido YA RELLENADO *****
-          // Usa el nombre de campo que espera tu backend (probablemente 'currentHtmlContent')
           currentHtmlContent: contentToSendToAI,
-          // El título sigue siendo útil como contexto para la IA
-          contextTitle: generalData.trackTitle || selectedContract.title, // Prioriza el trackTitle
-          // Opcional: Puedes mantener participants y generalData si el prompt de IA los usa para contexto,
-          // pero ya no son esenciales para la *inserción* de datos.
-          // participants: buildParticipantsPayload(),
-          // generalData,
+          contextTitle: generalData.trackTitle || selectedContract.title,
         };
         console.log(">>> Frontend: Payload for AI API:", payload); // Log para ver qué se envía
 
@@ -1597,7 +1539,6 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
             throw new Error(err.error || `Error de IA (${res.status})`)
           }
 
-          // ***** PASO 1.3: Espera 'refinedContent' del backend (como corregimos antes) *****
           const { refinedContent } = await res.json();
 
           if (!refinedContent?.trim()) {
@@ -1607,17 +1548,16 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
 
           /* --- Actualizar el editor ----------------------------------------- */
           if (editorRef.current) {
-              // Muestra el contenido refinado por la IA
               editorRef.current.innerHTML = refinedContent;
           }
-          // Sincroniza el estado con el contenido refinado
           setEditedContent(refinedContent);
 
           toast.success('Contrato Finalizado por IA', { id: toastId, description: 'El contenido ha sido actualizado y refinado.' });
 
         } catch (e: unknown) {
           console.error("Error finalizing contract with AI:", e);
-          toast.error('Error IA', { id: toastId, description: e.message });
+          const message = e instanceof Error ? e.message : String(e); // Safe error message access
+          toast.error('Error IA', { id: toastId, description: message });
         } finally {
           setIsFinalizingWithAI(false);
         }
@@ -1633,9 +1573,7 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
         const toastId = toast.loading("Generando con IA...", { description: "Esperando respuesta..." });
 
         try {
-            // --- Replace with actual API call to your AI service ---
              console.log("Calling AI generation API with prompt:", aiPrompt);
-             // Example structure:
               const aiResponse = await fetch('/api/ai/generate-template', { // Your AI endpoint
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
@@ -1646,13 +1584,6 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
                   throw new Error(errorData.error || `Error de IA (${aiResponse.status})`);
               }
               const aiResult = await aiResponse.json(); // Expect { title: string, content: string }
-             // --- End Actual API Call ---
-
-             // --- Mock Response (REMOVE/COMMENT WHEN USING REAL API) ---
-             // await new Promise((resolve) => setTimeout(resolve, 1500));
-             // const aiContent = `<p><strong>CONTRATO BORRADOR GENERADO POR IA - REVISAR CUIDADOSAMENTE</strong></p><br><p>Este contrato se basa en la descripción: "<em>${aiPrompt}</em>".</p><br><h2>Cláusula 1: Objeto</h2><p>[Detallar objeto del contrato...]</p><h2>Cláusula 2: Partes</h2><p>Comparecen [Parte A] y [Parte B].</p><br><p>[Desarrollar el resto de cláusulas...]</p><br><p>Firmado en [LugarDeFirma] a [Fecha].</p><br><p>[Firma Parte A]<br>[Firma Parte B]</p>`;
-             // const aiResult = { title: `IA Draft: ${aiPrompt.substring(0, 40)}${aiPrompt.length > 40 ? '...' : ''}`, content: aiContent };
-             // --- End Mock Response ---
 
              if (!aiResult?.title || !aiResult?.content) {
                  throw new Error("La respuesta de la IA no tuvo el formato esperado.");
@@ -1674,13 +1605,13 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
                  setAiPrompt(""); // Clear prompt
                  setShowAiModal(false); // Close modal
             } else {
-                 // Error handled within createTemplateFromData, toast updated/dismissed there
                   if (document.getElementById(String(toastId))) toast.dismiss(toastId); // Dismiss if not already handled
             }
 
         } catch (error: unknown) {
             console.error("AI generation or saving error:", error);
-            toast.error("Error IA", { id: toastId, description: error.message || "No se pudo generar o guardar la plantilla." });
+            const message = error instanceof Error ? error.message : String(error); // Safe error message access
+            toast.error("Error IA", { id: toastId, description: message || "No se pudo generar o guardar la plantilla." });
         } finally {
             setIsGeneratingTemplate(false);
         }
@@ -1704,7 +1635,8 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
              // Success toast is handled by the caller (generateAITemplate)
          } catch (err: unknown) {
              console.error("Error saving template from data:", err);
-             toast.error("Error al Guardar Plantilla IA", { description: err.message });
+             const message = err instanceof Error ? err.message : String(err); // Safe error message access
+             toast.error("Error al Guardar Plantilla IA", { description: message });
              savedTemplate = null; // Ensure null is returned on error
          } finally {
              setIsSubmitting(false);
@@ -1817,8 +1749,9 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
              resetProcess(); // Go back to library view after successful send
 
          } catch (err: unknown) {
-             setError(`Error al enviar: ${err.message}`);
-             toast.error("Error al Enviar Contrato", { description: err.message });
+             const message = err instanceof Error ? err.message : String(err); // Safe error message access
+             setError(`Error al enviar: ${message}`);
+             toast.error("Error al Enviar Contrato", { description: message });
              console.error(">>> Send Error:", err);
          } finally {
              setIsSending(false);
@@ -1859,8 +1792,6 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
     // Sync editing client data when 'editingClient' changes
     useEffect(() => {
         if (editingClient) {
-            // Populate editedClientData with the full client data initially
-            // Changes will then overwrite fields in the handleClientFormChange
              setEditedClientData({ ...editingClient });
         } else {
              setEditedClientData({}); // Clear when no client is being edited
@@ -1882,7 +1813,6 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
          if (!content?.trim()) return;
          // Only extract if the general data fields are currently empty
          if (generalData.fecha || generalData.trackTitle || generalData.lugarDeFirma || generalData.jurisdiction) {
-             // console.log("Skipping general data extraction, fields already populated.");
              return;
          }
 
@@ -1891,23 +1821,14 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
              tempDiv.innerHTML = content;
              const text = tempDiv.textContent || "";
 
-             // Regex attempts - make them less greedy and more specific
-             // Date: Look for dd/mm/yyyy, yyyy-mm-dd, or potentially month names near "Fecha:" or " a "
              const fechaMatch = text.match(/(?:Fecha:|a\s+)(\[?(\d{1,2}[-\/.]\d{1,2}[-\/.]\d{2,4}|\d{4}[-\/.]\d{1,2}[-\/.]\d{1,2})\]?)/i);
-             const fecha = fechaMatch?.[2]?.replace(/[[\]]/g, ''); // Get the date part
-
-             // Track Title: Look for words like "titulada", "obra", "track" followed by quoted text
+             const fecha = fechaMatch?.[2]?.replace(/[[\]]/g, '');
              const trackMatch = text.match(/(?:titulada|obra musical|track|canción)\s+["“'](\[?.*?\]?)["”']/i);
              const track = trackMatch?.[1]?.replace(/[[\]]/g, '');
-
-             // Place of Signing: Look for "En ", "Lugar:", etc., followed by text before the date/jurisdiction
              const lugarMatch = text.match(/(?:En\s+|Lugar:\s*)(\[?[\w\sÁÉÍÓÚáéíóúñÑ,\s]+\]?)(?=\s*,?\s*(?:a\s+|en\s+)?\[?Fecha|Jurisdic]|\(?en adelante\)?)/i);
              const lugar = lugarMatch?.[1]?.replace(/[[\]]/g, '').trim();
-
-             // Jurisdiction: Look for "Jurisdicción:" followed by text
              const jurisMatch = text.match(/(?:Jurisdicci[oó]n:)\s*(\[?[\w\sÁÉÍÓÚáéíóúñÑ,\s-]+\]?)/i);
              const juris = jurisMatch?.[1]?.replace(/[[\]]/g, '').trim();
-
 
              console.log("Extraction attempt:", { fecha, track, lugar, juris });
 
@@ -1917,6 +1838,10 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
                  fecha: !prev.fecha && fecha ? fecha : prev.fecha,
                  trackTitle: !prev.trackTitle && track ? track : prev.trackTitle,
                  lugarDeFirma: !prev.lugarDeFirma && lugar ? lugar : prev.lugarDeFirma,
+                 // Preserve existing non-extracted fields
+                 areaArtistica: prev.areaArtistica,
+                 duracionContrato: prev.duracionContrato,
+                 periodoAviso: prev.periodoAviso
              }));
          } catch (error) {
              console.error("Error extracting general data from template:", error);
@@ -1930,19 +1855,14 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
 
         const targetContent = editedContent || selectedContract.content || "";
 
-        // Sync editor div content if it doesn't match state (avoid unnecessary updates)
-        // Only sync if the content is actually different to avoid cursor jumps
         if (node.innerHTML !== targetContent) {
             node.innerHTML = targetContent;
         }
 
-        // Apply basic styling (consider moving to CSS)
         node.style.fontFamily = "Arial, sans-serif";
         node.style.fontSize = "11pt";
         node.style.lineHeight = "1.4";
 
-        // Extract general data only if editedContent is empty (i.e., just entered editor)
-        // And also check if general data fields are currently empty
         if (!editedContent && targetContent && !generalData.jurisdiction && !generalData.fecha && !generalData.trackTitle && !generalData.lugarDeFirma) {
             extractGeneralData(targetContent);
         }
@@ -1957,28 +1877,22 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
             return () => {}; // Return empty cleanup function
         }
 
-        // Flag when user starts selecting text
         const handleMouseDown = (e: MouseEvent) => {
             if (editor?.contains(e.target as Node)) {
                 setIsSelecting(true);
             }
         };
 
-        // Update toolbar on selection change or mouse up
         const handleSelectionOrMouseUp = () => {
-             // Use requestAnimationFrame to ensure layout is stable after selection change
              requestAnimationFrame(() => {
                  updateToolbarState();
                  setIsSelecting(false); // Reset selection flag
              });
         };
 
-        // Handle editor blur to potentially hide toolbar
         const handleBlur = (e: FocusEvent) => {
-             // Check if the new focused element is the toolbar itself
              const isToolbarFocused = toolbarRef.current?.contains(e.relatedTarget as Node);
              if (!isToolbarFocused) {
-                 // Use timeout to allow focus shifting between toolbar buttons without hiding
                  setTimeout(() => {
                       const currentFocus = document.activeElement;
                       const editorStillFocused = editorRef.current?.contains(currentFocus);
@@ -1994,12 +1908,12 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
         // Add listeners
         document.addEventListener("mousedown", handleMouseDown);
         document.addEventListener("selectionchange", handleSelectionOrMouseUp);
-        document.addEventListener("mouseup", handleSelectionOrMouseUp); // Crucial for ending selection drag
-        editor.addEventListener("scroll", updateToolbarState); // Update on scroll
-        editor.addEventListener("focus", updateToolbarState); // Update on focus gain
-        editor.addEventListener("blur", handleBlur); // Handle focus loss
+        document.addEventListener("mouseup", handleSelectionOrMouseUp);
+        editor.addEventListener("scroll", updateToolbarState);
+        editor.addEventListener("focus", updateToolbarState);
+        editor.addEventListener("blur", handleBlur);
 
-        // Cleanup listeners on component unmount or step change
+        // Cleanup listeners
         return () => {
             document.removeEventListener("mousedown", handleMouseDown);
             document.removeEventListener("selectionchange", handleSelectionOrMouseUp);
@@ -2102,7 +2016,7 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
                                                     // Reset dynamic data for the new contract
                                                     setSelectedParticipants([]);
                                                     setParticipantPercentages({});
-                                                    setGeneralData({ jurisdiction: "", fecha: "", trackTitle: "", lugarDeFirma: "" });
+                                                    setGeneralData({ jurisdiction: "", fecha: "", trackTitle: "", lugarDeFirma: "", areaArtistica: "", duracionContrato: "", periodoAviso: "" }); // Reset ALL general data
                                                     setSearchQuery(""); // Reset participant search
                                                     setStep(1); // Go to Preview step
                                                 }}
@@ -2237,12 +2151,11 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
                          animate={{ opacity: 1, y: 0 }}
                          exit={{ opacity: 0, y: -10 }}
                          transition={{ duration: 0.3 }}
-                         // Use flex layout for side-by-side columns, ensure it fills available height
-                         className="flex flex-col md:flex-row gap-4 lg:gap-6 h-full" // Removed overflow-hidden here, apply to inner elements if needed
+                         className="flex flex-col md:flex-row gap-4 lg:gap-6 h-full"
                        >
                          {/* ------------ Left Column: Editor ------------ */}
-                         <div className="flex flex-col flex-grow md:w-2/3 lg:w-3/4 h-full"> {/* Take more width */}
-                           <Card className="bg-white rounded-xl border shadow-md flex flex-col flex-grow overflow-hidden"> {/* Overflow hidden here is good */}
+                         <div className="flex flex-col flex-grow md:w-2/3 lg:w-3/4 h-full">
+                           <Card className="bg-white rounded-xl border shadow-md flex flex-col flex-grow overflow-hidden">
                              {/* Editor Header */}
                              <div className="p-3 border-b flex flex-col sm:flex-row justify-between items-center flex-shrink-0 bg-gray-50 rounded-t-xl">
                                <h2 className="text-lg font-semibold text-gray-700 truncate mb-2 sm:mb-0" title={selectedContract.title}>
@@ -2268,7 +2181,6 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
                              />
 
                              {/* Editable Area with Scroll */}
-                              {/* min-h-0 is important for flex-grow + ScrollArea */}
                              <ScrollArea className="flex-grow min-h-0 w-full border-t focus-within:ring-1 focus-within:ring-indigo-500 relative bg-white">
                                {/* Floating Toolbar */}
                                <AnimatePresence>
@@ -2300,34 +2212,27 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
                                <div
                                  ref={editorRef}
                                  contentEditable
-                                 // Use editedContent first, fallback to contract content
                                  dangerouslySetInnerHTML={{ __html: editedContent || selectedContract.content }}
                                  onInput={(e: React.SyntheticEvent<HTMLDivElement>) => {
-                                     // Update state on input, debounce might be needed for performance on large docs
                                      const currentContent = (e.target as HTMLDivElement).innerHTML;
-                                     if (editorRef.current && currentContent !== editedContent) { // Only update if content changed
+                                     if (editorRef.current && currentContent !== editedContent) {
                                          setEditedContent(currentContent);
                                      }
                                  }}
                                  onBlur={(e: React.FocusEvent<HTMLDivElement>) => {
-                                     // Ensure state is synced on blur as well
                                       const currentContent = e.target.innerHTML;
                                       if (editorRef.current && currentContent !== editedContent) {
                                           setEditedContent(currentContent);
                                       }
-                                      // Also update toolbar state on blur in case selection was cleared
                                       requestAnimationFrame(updateToolbarState);
                                  }}
                                  onFocus={updateToolbarState} // Update toolbar on focus
                                  onKeyDown={(e) => {
-                                     // Handle Enter key for paragraph breaks (Shift+Enter for line break is default)
                                      if (e.key === "Enter" && !e.shiftKey) {
                                         e.preventDefault();
                                         document.execCommand("insertParagraph", false);
                                      }
-                                     // Optional: Add other key handlers (e.g., Tab for indent)
                                  }}
-                                 // Apply base styling and ensure text wrapping
                                  className="prose prose-sm max-w-none w-full p-4 focus:outline-none whitespace-pre-wrap break-words min-h-full"
                                  style={{ wordBreak: "break-word", overflowWrap: "break-word", hyphens: "auto" }}
                                  suppressContentEditableWarning // Suppress React warning about managing contenteditable
@@ -2361,7 +2266,7 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
 
                                   {/* --- Action Buttons --- */}
                                   <div className="flex gap-2 w-full sm:w-auto justify-end">
-                                      {/* --- FINALIZAR CON IA --- (UPDATED) */}
+                                      {/* --- FINALIZAR CON IA --- */}
                                       <Button
                                         variant="outline"
                                         size="sm"
@@ -2369,11 +2274,11 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
                                         disabled={
                                           !selectedContract ||
                                           selectedParticipants.length === 0 ||
-                                          Math.abs(totalPercentage - 100) >= 0.01 || // Disable if % != 100
-                                          !isGeneralDataComplete || // Disable if general data missing
-                                          isSubmitting || isSending || isFinalizingWithAI // Disable during operations
+                                          Math.abs(totalPercentage - 100) >= 0.01 ||
+                                          !isGeneralDataComplete ||
+                                          isSubmitting || isSending || isFinalizingWithAI
                                         }
-                                        className="border-purple-500 text-purple-700 hover:bg-purple-50" // Consistent styling suggestion
+                                        className="border-purple-500 text-purple-700 hover:bg-purple-50"
                                       >
                                         {isFinalizingWithAI
                                           ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -2381,12 +2286,12 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
                                         Finalizar con IA
                                       </Button>
 
-                                      {/* --- ENVIAR --- (UPDATED) */}
+                                      {/* --- ENVIAR --- */}
                                       <Button
                                         onClick={handleSendContract}
                                         disabled={
-                                            !isEditorReadyToSend || // Check if editor content is valid and placeholders filled
-                                            isSubmitting || isSending || isFinalizingWithAI // Disable during operations
+                                            !isEditorReadyToSend ||
+                                            isSubmitting || isSending || isFinalizingWithAI
                                         }
                                         className={`bg-green-600 hover:bg-green-700 text-white ${
                                             (!isEditorReadyToSend || isSending || isSubmitting || isFinalizingWithAI) ? "opacity-50 cursor-not-allowed" : ""
@@ -2404,10 +2309,10 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
                          </div> {/* End Left Column */}
 
                          {/* ------------ Right Column: Sidebar ------------ */}
-                         <div className="w-full md:w-1/3 lg:w-1/4 flex flex-col h-full flex-shrink-0"> {/* Fixed width */}
+                         <div className="w-full md:w-1/3 lg:w-1/4 flex flex-col h-full flex-shrink-0">
                            <Card className="bg-white rounded-xl border shadow-md flex flex-col flex-grow overflow-hidden">
                              {/* Sidebar Scroll Area */}
-                             <ScrollArea className="flex-grow min-h-0"> {/* min-h-0 needed here too */}
+                             <ScrollArea className="flex-grow min-h-0">
                                <div className="p-4 space-y-6">
 
                                  {/* ---------- Participants Section ---------- */}
@@ -2424,7 +2329,7 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
                                         value={searchQuery}
                                         onChange={(e) => setSearchQuery(e.target.value)}
                                         className="w-full pl-9 h-9 text-sm"
-                                        disabled={isLoading || isSubmitting || isSending || isFinalizingWithAI} // Disable during operations
+                                        disabled={isLoading || isSubmitting || isSending || isFinalizingWithAI}
                                       />
                                     </div>
                                     {/* Client List */}
@@ -2444,7 +2349,7 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
                                             checked={selectedParticipants.includes(client.email)}
                                             onChange={(e) => handleCheckboxChange(e, client.email)}
                                             className="mr-2 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                                            disabled={isSubmitting || isSending || isFinalizingWithAI} // Disable during operations
+                                            disabled={isSubmitting || isSending || isFinalizingWithAI}
                                             aria-labelledby={`label-client-${client.id}`}
                                             />
                                             <label
@@ -2461,7 +2366,6 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
                                         ))
                                     )}
                                     </div>
-                                     {/* Button to add new client quickly */}
                                       <Button variant="outline" size="sm" className="w-full mt-2 text-xs" onClick={() => setShowAddClientSidebar(true)} disabled={isSubmitting || isSending || isFinalizingWithAI}>
                                           <UserPlus size={14} className="mr-1"/> Añadir Nuevo Cliente
                                       </Button>
@@ -2563,6 +2467,11 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
                                                <Label htmlFor="sidebar-general-track" className="mb-1 block text-xs"> Título Track / Obra<span className="text-red-500 ml-1">*</span> </Label>
                                                <Input id="sidebar-general-track" type="text" placeholder="Ej: Corazón Digital" value={generalData.trackTitle} onChange={(e) => setGeneralData((p) => ({ ...p, trackTitle: e.target.value })) } className="w-full text-sm h-9" required aria-required="true" disabled={isSubmitting || isSending || isFinalizingWithAI} />
                                            </div>
+                                            {/* Otros campos generales */}
+                                           <div> <Label htmlFor="sidebar-general-area" className="mb-1 block text-xs">Área Artística</Label> <Input id="sidebar-general-area" type="text" placeholder="Ej: Música Grabada" value={generalData.areaArtistica || ""} onChange={(e) => setGeneralData(p => ({ ...p, areaArtistica: e.target.value }))} className="w-full text-sm h-9" disabled={isSubmitting || isSending || isFinalizingWithAI}/> </div>
+                                           <div> <Label htmlFor="sidebar-general-duracion" className="mb-1 block text-xs">Duración Contrato</Label> <Input id="sidebar-general-duracion" type="text" placeholder="Ej: 3 años" value={generalData.duracionContrato || ""} onChange={(e) => setGeneralData(p => ({ ...p, duracionContrato: e.target.value }))} className="w-full text-sm h-9" disabled={isSubmitting || isSending || isFinalizingWithAI}/> </div>
+                                           <div> <Label htmlFor="sidebar-general-aviso" className="mb-1 block text-xs">Periodo Aviso (Renovación/Term.)</Label> <Input id="sidebar-general-aviso" type="text" placeholder="Ej: 60 días" value={generalData.periodoAviso || ""} onChange={(e) => setGeneralData(p => ({ ...p, periodoAviso: e.target.value }))} className="w-full text-sm h-9" disabled={isSubmitting || isSending || isFinalizingWithAI}/> </div>
+
                                            {/* Validation Message */}
                                            {!isGeneralDataComplete && selectedParticipants.length > 0 && ( // Show only if participants selected but data missing
                                                <p role="alert" className="text-xs text-red-600 text-center mt-1">
@@ -2674,8 +2583,6 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
                                                               📞 {client.phone}
                                                           </p>
                                                       )}
-                                                      {/* Optionally show added date */}
-                                                      {/* <p className="text-xs text-gray-400 mt-1">Añadido: {client.added ? new Date(client.added).toLocaleDateString() : 'N/A'}</p> */}
                                                  </div>
                                                  {/* Actions */}
                                                  <div className="flex justify-end gap-1 mt-3 pt-2 border-t">
@@ -2700,7 +2607,6 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
                              <CheckCircle size={48} className="mx-auto mb-4 text-green-500"/>
                              <p className="text-lg font-semibold">Contratos Firmados</p>
                              <p className="text-sm mt-2">(Esta sección mostrará los contratos completados - Funcionalidad Futura)</p>
-                             {/* TODO: Fetch and display signed contracts similar to 'Sent' view */}
                         </motion.div>
                     )}
 
@@ -2767,7 +2673,6 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
                                       <Label htmlFor="add-passport">DNI / Pasaporte</Label>
                                       <Input id="add-passport" name="passport" value={newClient.passport || ""} onChange={handleClientFormChange} placeholder="Número de identificación" disabled={isSubmitting}/>
                                  </div>
-                                  {/* Add Date of Birth, Expiration Date if needed */}
                             </TabsContent>
 
                             <TabsContent value="contact" className="mt-4 space-y-4">
@@ -2790,7 +2695,6 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
                             </TabsContent>
 
                             <TabsContent value="social" className="mt-4 space-y-4">
-                                 {/* Add icons or placeholders */}
                                 <div> <Label htmlFor="add-instagram">Instagram</Label> <Input id="add-instagram" name="instagram" value={newClient.instagram || ""} onChange={handleClientFormChange} placeholder="@usuario" disabled={isSubmitting}/> </div>
                                 <div> <Label htmlFor="add-facebook">Facebook</Label> <Input id="add-facebook" name="facebook" value={newClient.facebook || ""} onChange={handleClientFormChange} placeholder="URL perfil o página" disabled={isSubmitting}/> </div>
                                 <div> <Label htmlFor="add-twitter">Twitter / X</Label> <Input id="add-twitter" name="twitter" value={newClient.twitter || ""} onChange={handleClientFormChange} placeholder="@usuario" disabled={isSubmitting}/> </div>
@@ -2801,14 +2705,12 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
                                 <div> <Label htmlFor="add-labelName">Nombre del Sello</Label> <Input id="add-labelName" name="labelName" value={newClient.labelName || ""} onChange={handleClientFormChange} disabled={isSubmitting}/> </div>
                                 <div> <Label htmlFor="add-labelEmail">Email del Sello</Label> <Input id="add-labelEmail" name="labelEmail" type="email" value={newClient.labelEmail || ""} onChange={handleClientFormChange} disabled={isSubmitting}/> </div>
                                 <div> <Label htmlFor="add-labelPhone">Teléfono Sello</Label> <Input id="add-labelPhone" name="labelPhone" type="tel" value={newClient.labelPhone || ""} onChange={handleClientFormChange} disabled={isSubmitting}/> </div>
-                                {/* Add Address, Country for Label */}
                             </TabsContent>
 
                              <TabsContent value="publisher" className="mt-4 space-y-4">
                                 <div> <Label htmlFor="add-publisherName">Nombre Editorial</Label> <Input id="add-publisherName" name="publisherName" value={newClient.publisherName || ""} onChange={handleClientFormChange} disabled={isSubmitting}/> </div>
                                 <div> <Label htmlFor="add-publisherIpi">IPI / CAE</Label> <Input id="add-publisherIpi" name="publisherIpi" value={newClient.publisherIpi || ""} onChange={handleClientFormChange} placeholder="Número IPI/CAE" disabled={isSubmitting}/> </div>
                                 <div> <Label htmlFor="add-publisherEmail">Email Editorial</Label> <Input id="add-publisherEmail" name="publisherEmail" type="email" value={newClient.publisherEmail || ""} onChange={handleClientFormChange} disabled={isSubmitting}/> </div>
-                                {/* Add Phone, Address, Country for Publisher */}
                             </TabsContent>
                         </Tabs>
                     </ScrollArea>
@@ -2854,7 +2756,6 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                       <div>
                                            <Label htmlFor="edit-firstName">Nombre<span className="text-red-500 ml-1">*</span></Label>
-                                           {/* Use editedClientData first, fallback to original editingClient */}
                                            <Input id="edit-firstName" name="firstName" value={editedClientData.firstName ?? editingClient.firstName ?? ''} onChange={handleClientFormChange} required aria-required="true" disabled={isSubmitting}/>
                                       </div>
                                       <div>
@@ -2892,19 +2793,22 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
                                       <Input id="edit-country" name="country" value={editedClientData.country ?? editingClient.country ?? ''} onChange={handleClientFormChange} disabled={isSubmitting}/>
                                  </div>
                              </TabsContent>
-                            {/* Other tabs mirror the Add Client structure, using editedClientData fallback to editingClient */}
                              <TabsContent value="social" className="mt-4 space-y-4">
                                 <div><Label htmlFor="edit-instagram">Instagram</Label><Input id="edit-instagram" name="instagram" value={editedClientData.instagram ?? editingClient.instagram ?? ''} onChange={handleClientFormChange} placeholder="@usuario" disabled={isSubmitting}/></div>
-                                {/* ... other social fields ... */}
+                                <div><Label htmlFor="edit-facebook">Facebook</Label><Input id="edit-facebook" name="facebook" value={editedClientData.facebook ?? editingClient.facebook ?? ''} onChange={handleClientFormChange} placeholder="URL perfil o página" disabled={isSubmitting}/></div>
+                                <div><Label htmlFor="edit-twitter">Twitter / X</Label><Input id="edit-twitter" name="twitter" value={editedClientData.twitter ?? editingClient.twitter ?? ''} onChange={handleClientFormChange} placeholder="@usuario" disabled={isSubmitting}/></div>
+                                <div><Label htmlFor="edit-linkedin">LinkedIn</Label><Input id="edit-linkedin" name="linkedin" value={editedClientData.linkedin ?? editingClient.linkedin ?? ''} onChange={handleClientFormChange} placeholder="URL perfil" disabled={isSubmitting}/></div>
                              </TabsContent>
                              <TabsContent value="label" className="mt-4 space-y-4">
                                  <div><Label htmlFor="edit-labelName">Nombre Sello</Label><Input id="edit-labelName" name="labelName" value={editedClientData.labelName ?? editingClient.labelName ?? ''} onChange={handleClientFormChange} disabled={isSubmitting}/></div>
-                                {/* ... other label fields ... */}
+                                 <div><Label htmlFor="edit-labelEmail">Email Sello</Label><Input id="edit-labelEmail" name="labelEmail" type="email" value={editedClientData.labelEmail ?? editingClient.labelEmail ?? ''} onChange={handleClientFormChange} disabled={isSubmitting}/></div>
+                                 <div><Label htmlFor="edit-labelPhone">Teléfono Sello</Label><Input id="edit-labelPhone" name="labelPhone" type="tel" value={editedClientData.labelPhone ?? editingClient.labelPhone ?? ''} onChange={handleClientFormChange} disabled={isSubmitting}/></div>
                              </TabsContent>
                              <TabsContent value="publisher" className="mt-4 space-y-4">
                                   <div><Label htmlFor="edit-publisherName">Nombre Editorial</Label><Input id="edit-publisherName" name="publisherName" value={editedClientData.publisherName ?? editingClient.publisherName ?? ''} onChange={handleClientFormChange} disabled={isSubmitting}/></div>
                                   <div><Label htmlFor="edit-publisherIpi">IPI / CAE</Label><Input id="edit-publisherIpi" name="publisherIpi" value={editedClientData.publisherIpi ?? editingClient.publisherIpi ?? ''} onChange={handleClientFormChange} placeholder="Número IPI/CAE" disabled={isSubmitting}/></div>
-                                {/* ... other publisher fields ... */}
+                                  <div><Label htmlFor="edit-publisherEmail">Email Editorial</Label><Input id="edit-publisherEmail" name="publisherEmail" type="email" value={editedClientData.publisherEmail ?? editingClient.publisherEmail ?? ''} onChange={handleClientFormChange} disabled={isSubmitting}/></div>
+                                  <div><Label htmlFor="edit-publisherPhone">Teléfono Editorial</Label><Input id="edit-publisherPhone" name="publisherPhone" type="tel" value={editedClientData.publisherPhone ?? editingClient.publisherPhone ?? ''} onChange={handleClientFormChange} disabled={isSubmitting}/></div>
                              </TabsContent>
                          </Tabs>
                      </ScrollArea>
@@ -2923,7 +2827,7 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
                  <DialogContent className="max-w-3xl"> {/* Wider modal for content */}
                      <DialogHeader>
                           <DialogTitle>Detalles del Contrato Enviado</DialogTitle>
-                          <DialogDescription> "{viewingSentContract?.title}" </DialogDescription>
+                          <DialogDescription> &ldquo;{viewingSentContract?.title}&rdquo; </DialogDescription> {/* CORRECCIÓN: Comillas escapadas */}
                       </DialogHeader>
                      <div className="mt-4 space-y-4 max-h-[75vh] overflow-y-auto pr-2"> {/* Scroll content if needed */}
                          <div className="flex justify-between text-sm text-gray-600 border-b pb-2 mb-3">
@@ -2958,7 +2862,6 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
                           <Button variant="secondary" onClick={() => viewingSentContract && downloadPdfContent(viewingSentContract.content, viewingSentContract.title)} disabled={isSubmitting}> <Download size={16} className="mr-1"/> PDF </Button>
                           <Button variant="secondary" onClick={() => viewingSentContract && downloadWordContent(viewingSentContract.content, viewingSentContract.title)} disabled={isSubmitting}> <Download size={16} className="mr-1"/> Word </Button>
                           <Button variant="outline" onClick={() => setViewingSentContract(null)}> Cerrar </Button>
-                          {/* Add Resend or other actions */}
                       </DialogFooter>
                  </DialogContent>
              </Dialog>
@@ -2970,8 +2873,9 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
                            <DialogTitle className="flex items-center text-red-600">
                                <AlertTriangle className="mr-2" size={22}/> Confirmar Eliminación
                            </DialogTitle>
+                           {/* CORRECCIÓN: Comillas escapadas */}
                            <DialogDescription>
-                               ¿Estás seguro de que quieres eliminar permanentemente a "{confirmingDeleteClient?.name}"? Esta acción no se puede deshacer.
+                               ¿Estás seguro de que quieres eliminar permanentemente a &ldquo;{confirmingDeleteClient?.name}&rdquo;? Esta acción no se puede deshacer.
                            </DialogDescription>
                        </DialogHeader>
                        <DialogFooter className="flex justify-end gap-3 mt-4">
@@ -2991,8 +2895,9 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
                             <DialogTitle className="flex items-center text-red-600">
                                 <AlertTriangle className="mr-2" size={22}/> Confirmar Eliminación
                             </DialogTitle>
+                            {/* CORRECCIÓN: Comillas escapadas */}
                             <DialogDescription>
-                                ¿Estás seguro de que quieres eliminar permanentemente la plantilla "{confirmingDeleteTemplate?.title}"? Esta acción no se puede deshacer.
+                                ¿Estás seguro de que quieres eliminar permanentemente la plantilla &ldquo;{confirmingDeleteTemplate?.title}&rdquo;? Esta acción no se puede deshacer.
                             </DialogDescription>
                         </DialogHeader>
                         <DialogFooter className="flex justify-end gap-3 mt-4">
@@ -3018,7 +2923,6 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
                              </div>
                              <div>
                                  <Label htmlFor="new-category">Categoría<span className="text-red-500 ml-1">*</span></Label>
-                                 {/* Consider using a <select> or suggestions if categories are fixed */}
                                  <Input id="new-category" name="category" value={newTemplate.category} onChange={handleTemplateFormChange} required placeholder="Ej: Music Splits, Licencia" disabled={isSubmitting}/>
                              </div>
                              <div>
@@ -3056,7 +2960,8 @@ const handleDownload = async (format: "pdf" | "word" = "pdf") => {
                  <DialogContent className="max-w-2xl"> {/* Wider modal */}
                      <DialogHeader>
                           <DialogTitle>Editar Plantilla</DialogTitle>
-                          <DialogDescription>Modificando: "{templateToEdit?.title}"</DialogDescription>
+                          {/* CORRECCIÓN: Comillas escapadas */}
+                          <DialogDescription>Modificando: &ldquo;{templateToEdit?.title}&rdquo;</DialogDescription>
                       </DialogHeader>
                       {/* Check if templateToEdit exists before rendering form */}
                       {templateToEdit ? (
