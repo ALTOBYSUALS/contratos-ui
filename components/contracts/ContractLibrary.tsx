@@ -226,11 +226,13 @@ const ContractLibrary = () => { // <--- Inicio del componente
                 if (!sentContractsRes.ok) console.warn(`Enviados API Warning: ${sentContractsRes.status} ${sentContractsRes.statusText}`);
 
                 const templatesData: Template[] = await templatesRes.json();
-                const clientsDataRaw: any[] = await clientsRes.json();
+                // Cambio en Línea 229:
+                const clientsDataRaw: Record<string, any>[] = await clientsRes.json();
                 const sentContractsData: SentContract[] = sentContractsRes.ok ? await sentContractsRes.json() : [];
 
                 // Usa Record<string, any> para el mapeo seguro
-                const clientsDataProcessed: Client[] = clientsDataRaw.map(clientRaw => createClientObject(clientRaw as Record<string, any>));
+                // Cambio en Línea 233:
+                const clientsDataProcessed: Client[] = clientsDataRaw.map(clientRaw => createClientObject(clientRaw));
 
                 // Actualiza estados
                 setTemplates(templatesData.sort((a, b) => a.title.localeCompare(b.title)));
