@@ -39,7 +39,8 @@ import {
 // -----------------------
 
 // --- Tipos (asumiendo que están en '@/lib/types') ---
-import type { Client, Template, SentContract, GeneralContractData, ParticipantFinal } from '@/lib/types';
+// Línea 42 - CORREGIDA
+import type { Client, Template, SentContract, GeneralContractData } from '@/lib/types';
 // --- FIN DE LÍNEA A MANTENER ---
 
 import React, { useState, useRef, useEffect, useCallback, ChangeEvent } from "react";
