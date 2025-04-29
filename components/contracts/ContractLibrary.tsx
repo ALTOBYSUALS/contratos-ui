@@ -892,96 +892,94 @@ const ContractLibrary = () => { // <--- Inicio del componente
            
                        // --- SOLUCIÓN 1: Definición de processNode actualizada ---
                        // Recursive function to process DOM nodes
-                       const processNode = (node: Node, currentStyle: {
-                           fontSize?: number;
-                           fontStyle?: string;
-                           indent?: number;
-                           listLevel?: number;
-                           listType?: 'ol' | 'ul';
-                           listCounter?: number;
-                           isListItem?: boolean;   // <-- AÑADIDA
-                           listPrefix?: string;    // <-- AÑADIDA
-                       } = {}) => {
-                           if (node.nodeType === Node.TEXT_NODE && node.textContent?.trim()) {
-                               // La lógica para añadir prefijo aquí puede ser compleja.
-                               // Se pasa el estilo completo a addText; addText podría usar listPrefix si se modifica.
-                               addText(node.textContent.trim(), { ...currentStyle });
-                           } else if (node.nodeType === Node.ELEMENT_NODE) {
-                               const el = node as Element;
-                               const tagName = el.tagName.toLowerCase();
-                               const newStyle = { ...currentStyle }; // Inherit styles
-           
-                               // Basic Style Tags
-                               if (tagName === 'strong' || tagName === 'b') newStyle.fontStyle = currentStyle.fontStyle === 'italic' ? 'bolditalic' : 'bold';
-                               if (tagName === 'em' || tagName === 'i') newStyle.fontStyle = currentStyle.fontStyle === 'bold' ? 'bolditalic' : 'italic';
-           
-                               // Heading Tags
-                               if (tagName.match(/^h[1-6]$/)) {
-                                   const level = parseInt(tagName[1]);
-                                   newStyle.fontSize = Math.max(baseFontSize, 16 - (level - 1) * 2);
-                                   newStyle.fontStyle = 'bold';
-                                    if (currentY > margins.top + baseLineHeight) currentY += baseLineHeight * 0.5;
-                               }
-           
-                               // Paragraphs and Divs
-                               if (tagName === 'p' || tagName === 'div' || tagName.match(/^h[1-6]$/) || tagName === 'blockquote') {
-                                    Array.from(el.childNodes).forEach(child => processNode(child, newStyle));
-                                    currentY += baseLineHeight * 0.3;
-                                    if (tagName === 'blockquote') newStyle.indent = (newStyle.indent || 0) + 20;
-                               }
-                               // Lists
-                               else if (tagName === 'ul' || tagName === 'ol') {
-                                   const listLevel = (currentStyle.listLevel || 0) + 1;
-                                   const indentSize = 20;
-                                   newStyle.indent = (currentStyle.indent || 0) + indentSize;
-                                   newStyle.listLevel = listLevel;
-                                   newStyle.listType = tagName as ('ul' | 'ol');
-                                   newStyle.listCounter = 1; // Start counting at 1 for this list level
-           
-                                   Array.from(el.children).forEach(li => {
-                                       if (li.tagName.toLowerCase() === 'li') {
-                                            // --- SOLUCIÓN 2: Manejo seguro de listCounter ---
-                                            // Aseguramos que listCounter sea un número antes de usarlo
-                                            let currentCounterValue = newStyle.listCounter ?? 1; // Usa 1 como fallback si es undefined
-                                            const prefix = newStyle.listType === 'ol' ? `${currentCounterValue}. ` : '- ';
-           
-                                            // ¡Importante! Actualiza el contador en newStyle DESPUÉS de usarlo
-                                            if (newStyle.listType === 'ol') {
-                                                 // Asegura que se incremente correctamente
-                                                 newStyle.listCounter = currentCounterValue + 1;
-                                            }
-                                            // --- FIN SOLUCIÓN 2 ---
-           
-                                            // Llama recursivamente pasando el prefijo calculado y el flag isListItem
-                                            // La definición de processNode ahora acepta estas propiedades
-                                            Array.from(li.childNodes).forEach(child => processNode(child, { ...newStyle, isListItem: true, listPrefix: prefix }));
-                                       }
-                                    });
-                                    currentY += baseLineHeight * 0.3; // Espacio después de la lista completa
-                               }
-                               // Line Break
-                               else if (tagName === 'br') {
-                                   currentY += baseLineHeight;
-                               }
-                               // Horizontal Rule
-                               else if (tagName === 'hr') {
-                                    if (currentY + 10 > maxY) { pdf.addPage(); currentY = margins.top; }
-                                    pdf.setDrawColor(150, 150, 150);
-                                    pdf.line(margins.left, currentY, margins.left + contentWidth, currentY);
-                                    currentY += baseLineHeight;
-                               }
-                               // Image Tag
-                               else if (tagName === 'img') {
-                                    // Variable imgSrc eliminada previamente ya que no se usaba
-                                    console.warn("PDF Export: Images are currently not fully supported in manual PDF generation.");
-                                    addText("[Imagen no soportada en PDF]", { fontStyle: 'italic', fontSize: 8 });
-                               }
-                               // Default: Process children
-                               else {
-                                   Array.from(el.childNodes).forEach(child => processNode(child, newStyle));
-                               }
-                           }
-                       }; // --- FIN de la definición de processNode ---
+                                  // Recursive function to process DOM nodes
+            const processNode = (node: Node, currentStyle: {
+                fontSize?: number;
+                fontStyle?: string;
+                indent?: number;
+                listLevel?: number;
+                listType?: 'ol' | 'ul';
+                listCounter?: number;
+                isListItem?: boolean;   // <-- Propiedad añadida anteriormente
+                listPrefix?: string;    // <-- Propiedad añadida anteriormente
+            } = {}) => {
+                if (node.nodeType === Node.TEXT_NODE && node.textContent?.trim()) {
+                    addText(node.textContent.trim(), { ...currentStyle });
+                } else if (node.nodeType === Node.ELEMENT_NODE) {
+                    const el = node as Element;
+                    const tagName = el.tagName.toLowerCase();
+                    const newStyle = { ...currentStyle }; // Inherit styles
+
+                    // Basic Style Tags
+                    if (tagName === 'strong' || tagName === 'b') newStyle.fontStyle = currentStyle.fontStyle === 'italic' ? 'bolditalic' : 'bold';
+                    if (tagName === 'em' || tagName === 'i') newStyle.fontStyle = currentStyle.fontStyle === 'bold' ? 'bolditalic' : 'italic';
+
+                    // Heading Tags
+                    if (tagName.match(/^h[1-6]$/)) {
+                        const level = parseInt(tagName[1]);
+                        newStyle.fontSize = Math.max(baseFontSize, 16 - (level - 1) * 2);
+                        newStyle.fontStyle = 'bold';
+                         if (currentY > margins.top + baseLineHeight) currentY += baseLineHeight * 0.5;
+                    }
+
+                    // Paragraphs and Divs
+                    if (tagName === 'p' || tagName === 'div' || tagName.match(/^h[1-6]$/) || tagName === 'blockquote') {
+                         Array.from(el.childNodes).forEach(child => processNode(child, newStyle));
+                         currentY += baseLineHeight * 0.3;
+                         if (tagName === 'blockquote') newStyle.indent = (newStyle.indent || 0) + 20;
+                    }
+                    // Lists
+                    else if (tagName === 'ul' || tagName === 'ol') {
+                        const listLevel = (currentStyle.listLevel || 0) + 1;
+                        const indentSize = 20;
+                        newStyle.indent = (currentStyle.indent || 0) + indentSize;
+                        newStyle.listLevel = listLevel;
+                        newStyle.listType = tagName as ('ul' | 'ol');
+                        newStyle.listCounter = 1; // Start counting at 1 for this list level
+
+                        Array.from(el.children).forEach(li => {
+                            if (li.tagName.toLowerCase() === 'li') {
+                                 // --- CORRECCIÓN PARA prefer-const ---
+                                 // Cambiado 'let' a 'const'
+                                 const currentCounterValue = newStyle.listCounter ?? 1; // <-- CAMBIADO AQUÍ
+                                 // --- FIN CORRECCIÓN ---
+
+                                 const prefix = newStyle.listType === 'ol' ? `${currentCounterValue}. ` : '- ';
+
+                                 // ¡Importante! Actualiza el contador en newStyle DESPUÉS de usarlo
+                                 if (newStyle.listType === 'ol') {
+                                      // Asegura que se incremente correctamente
+                                      newStyle.listCounter = currentCounterValue + 1;
+                                 }
+
+                                 // Llama recursivamente pasando el prefijo calculado y el flag isListItem
+                                 Array.from(li.childNodes).forEach(child => processNode(child, { ...newStyle, isListItem: true, listPrefix: prefix }));
+                            }
+                         });
+                         currentY += baseLineHeight * 0.3; // Espacio después de la lista completa
+                    }
+                    // Line Break
+                    else if (tagName === 'br') {
+                        currentY += baseLineHeight;
+                    }
+                    // Horizontal Rule
+                    else if (tagName === 'hr') {
+                         if (currentY + 10 > maxY) { pdf.addPage(); currentY = margins.top; }
+                         pdf.setDrawColor(150, 150, 150);
+                         pdf.line(margins.left, currentY, margins.left + contentWidth, currentY);
+                         currentY += baseLineHeight;
+                    }
+                    // Image Tag
+                    else if (tagName === 'img') {
+                         console.warn("PDF Export: Images are currently not fully supported in manual PDF generation.");
+                         addText("[Imagen no soportada en PDF]", { fontStyle: 'italic', fontSize: 8 });
+                    }
+                    // Default: Process children
+                    else {
+                        Array.from(el.childNodes).forEach(child => processNode(child, newStyle));
+                    }
+                }
+            }; // --- FIN de la definición de processNode ---
            
                        // Start processing
                        processNode(tempDiv);
