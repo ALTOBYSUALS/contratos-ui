@@ -7,10 +7,8 @@ import { Resend } from 'resend';
 import { createNotionContract, createNotionSigner } from '@/services/notion';
 import type {GeneralContractData, } from '@/lib/types'; // Asegúrate de importar de /lib
 import { enviarCorreo } from '@/services/email';
-import { jsPDF } from 'jspdf';
-import fs from 'fs';
-import path from 'path';
 import os from 'os';
+import path from 'path';
 
 // --- Configuración Inicial (Leer desde .env) ---
 // NOTA: Usa '!' solo si estás MUY seguro que la variable existe tras el check inicial
