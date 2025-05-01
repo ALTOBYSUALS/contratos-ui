@@ -1,7 +1,11 @@
 // Ruta Completa: /app/api/contracts/send-finalized/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
-import puppeteer from 'puppeteer';
+// --- Cambios para Puppeteer en Vercel ---
+// import puppeteer from 'puppeteer'; // Ya no se usa el completo
+import puppeteer from 'puppeteer-core'; // Usar puppeteer-core
+import chromium from '@sparticuz/chromium-min'; // Importar chromium-min
+// --- Fin Cambios ---
 import { put } from '@vercel/blob';
 import { Resend } from 'resend';
 import { createNotionContract, createNotionSigner } from '@/services/notion';
@@ -78,20 +82,17 @@ export async function POST(request: NextRequest) {
         console.log("[Send Finalized API] Generando PDF...");
         let pdfBytesDraft;
         try {
-            // Añade opciones recomendadas para entornos serverless/contenedores
+            // --- Opciones actualizadas para Puppeteer en Vercel ---
+            const executablePath = await chromium.executablePath();
+            console.log('[Puppeteer] Using executable path:', executablePath); // Log para debug
+
             browser = await puppeteer.launch({
-                 headless: true,
-                 args: [
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--disable-dev-shm-usage', // Importante en muchos entornos cloud/contenedores
-                    '--disable-accelerated-2d-canvas',
-                    '--no-first-run',
-                    '--no-zygote',
-                    // '--single-process', // Descomenta si sigue fallando en Vercel (menos eficiente)
-                    '--disable-gpu'
-                 ]
+                args: chromium.args,
+                defaultViewport: chromium.defaultViewport,
+                executablePath: executablePath,
+                headless: chromium.headless, // Usar 'new' headless mode
              });
+             // --- Fin Opciones ---
             const page = await browser.newPage();
             await page.setContent(finalHtmlContent, { waitUntil: 'networkidle0' });
             // Opcional: añadir CSS básico
@@ -281,6 +282,7 @@ export async function POST(request: NextRequest) {
 }
 
 // Función auxiliar para generar el PDF del contrato
+/*
 async function generateContractPDF(htmlContent: string, title: string): Promise<string> {
   // Crear un nombre de archivo seguro
   const safeTitle = title.replace(/[^\w\s.-]/g, "").replace(/\s+/g, "_");
@@ -326,11 +328,4 @@ async function generateContractPDF(htmlContent: string, title: string): Promise<
   await browser.close();
   return pdfPath;
 }
-
-/* <--- Añade esto
-async function generateContractPDF(htmlContent: string): Promise<Buffer> {
-    // ... tu implementación ...
-    console.warn("generateContractPDF function called but might be deprecated.");
-    return Buffer.from(''); // Placeholder
-}
-*/ // <--- Añade esto
+*/
