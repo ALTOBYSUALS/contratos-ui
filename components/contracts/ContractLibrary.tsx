@@ -32,7 +32,7 @@ import { Separator } from "@/components/ui/separator";
 import {
     X, Save, UserPlus, Download, Trash2, Edit, Percent, AlertTriangle,
     Bold, Italic, Sparkles, Upload, Search, Strikethrough, ListOrdered, List,
-    ArrowLeft, Library, Send, CheckCircle, Users, Eye, Edit2, Plus, Settings2,
+    ArrowLeft, Library, Send, CheckCircle, Users, /* Eye, */ Edit2, Plus, Settings2,
     Code, Quote, Underline, ImagePlus, Loader2, RefreshCw // Added Loader icon
 } from "lucide-react";
 // -----------------------
@@ -3139,7 +3139,7 @@ className="flex flex-col md:flex-row gap-4 lg:gap-6 flex-grow min-h-0 overflow-h
                            />
                        </div>
                        <DialogFooter>
-                           <Button variant="outline" onClick={() => setShowAiModal(false)} disabled={isGeneratingTemplate}> Cancelar </Button>
+                           <Button variant="outline" onClick={() => setShowAiModal(false)} disabled={isGeneratingTemplate}> Cancelar </ Button>
                            <Button onClick={generateAITemplate} disabled={isGeneratingTemplate || !aiPrompt.trim()}>
                                {isGeneratingTemplate ? (
                                    <><Loader2 className="mr-2 h-4 w-4 animate-spin"/>Generando...</>

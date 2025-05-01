@@ -326,3 +326,11 @@ async function generateContractPDF(htmlContent: string, title: string): Promise<
   await browser.close();
   return pdfPath;
 }
+
+/* <--- Añade esto
+async function generateContractPDF(htmlContent: string): Promise<Buffer> {
+    // ... tu implementación ...
+    console.warn("generateContractPDF function called but might be deprecated.");
+    return Buffer.from(''); // Placeholder
+}
+*/ // <--- Añade esto

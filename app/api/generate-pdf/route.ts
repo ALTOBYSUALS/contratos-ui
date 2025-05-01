@@ -1,99 +1,57 @@
 // /app/api/generate-pdf/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import puppeteer from 'puppeteer';
+import { logger, handleApiError, PDFGenerationError } from '@/lib/error-handling';
+import { generatePdf } from '@/services/pdf';
 
 export const dynamic = 'force-dynamic'; // Asegura que no se cachee
 
+// Implementación directa sin usar el middleware de validación
 export async function POST(req: NextRequest) {
-    console.log("API generate-pdf: Received request");
-    try {
-        const { htmlContent, title = 'documento' } = await req.json();
-
-        if (!htmlContent || typeof htmlContent !== 'string') {
-            console.error("API generate-pdf: Missing or invalid htmlContent");
-            return NextResponse.json({ error: 'Falta el contenido HTML para generar el PDF.' }, { status: 400 });
-        }
-        console.log("API generate-pdf: HTML content received (length):", htmlContent.length);
-
-        // Lanzar Puppeteer
-        console.log("API generate-pdf: Launching browser...");
-        // Opciones importantes para Vercel/entornos serverless:
-        const browser = await puppeteer.launch({
-           args: [
-               '--no-sandbox', // Necesario en muchos entornos Linux/Docker/Serverless
-               '--disable-setuid-sandbox',
-               '--disable-dev-shm-usage', // Ayuda a evitar errores de memoria compartida
-               '--single-process' // Puede ayudar en entornos con recursos limitados
-           ],
-           headless: true // Ejecutar sin interfaz gráfica
-        });
-        console.log("API generate-pdf: Browser launched.");
-
-        const page = await browser.newPage();
-        console.log("API generate-pdf: New page created.");
-
-        // Establecer el contenido HTML en la página
-        // Usamos 'waitUntil: 'networkidle0'' para esperar a que las fuentes/imágenes (si las hubiera) carguen
-        await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
-        console.log("API generate-pdf: HTML content set on page.");
-
-        // Establecer CSS para impresión de alta calidad
-        await page.addStyleTag({
-            content: `
-                body { font-family: Georgia, serif; line-height: 1.6; }
-                h1 { font-size: 18pt; text-align: center; }
-                /* más estilos... */
-            `
-        });
-
-        // Generar el PDF
-        console.log("API generate-pdf: Generating PDF...");
-        const pdfBuffer = await page.pdf({
-            format: 'A4', // Formato de página
-            printBackground: true, // Incluir fondos CSS si los hubiera
-            margin: { // Márgenes (puedes ajustarlos)
-                top: '1cm',
-                right: '1cm',
-                bottom: '1cm',
-                left: '1cm',
-            },
-        });
-        console.log("API generate-pdf: PDF generated (buffer length):", pdfBuffer.length);
-
-        // Cerrar el navegador
-        await browser.close();
-        console.log("API generate-pdf: Browser closed.");
-
-        // Crear la respuesta con el buffer del PDF
-        const safeTitle = title.replace(/[^\w\s.-]/g, "").replace(/\s+/g, "_");
-        const filename = `${safeTitle}.pdf`;
-
-        // Devolver el PDF como un blob para descargar
-        return new NextResponse(pdfBuffer, {
-            status: 200,
-            headers: {
-                'Content-Type': 'application/pdf',
-                'Content-Disposition': `attachment; filename="${filename}"`, // Indica al navegador que descargue el archivo
-            },
-        });
-
-    } catch (error: unknown) { // <-- Cambiado a unknown
-        console.error("API generate-pdf: Error generating PDF:", error); // Log completo
-
-        let errorMessage = "Error desconocido al generar el PDF."; // Mensaje por defecto
-
-        if (error instanceof Error) {
-            errorMessage = error.message; // Seguro usar .message
-            // Si Puppeteer da errores más específicos, podrías intentar extraerlos aquí
-        } else if (typeof error === 'string') {
-            errorMessage = error;
-        }
-
-        // Devuelve el mensaje de error seguro
-        return NextResponse.json(
-            // Cambiado para usar solo un mensaje claro
-            { error: `Error al generar el PDF: ${errorMessage}` },
-            { status: 500 }
-        );
+  try {
+    // Extraer y validar datos manualmente
+    const body = await req.json().catch(() => {
+      throw new PDFGenerationError('El cuerpo de la solicitud debe ser un JSON válido', 400);
+    });
+    
+    // Validar contenido HTML
+    if (!body.htmlContent || typeof body.htmlContent !== 'string') {
+      throw new PDFGenerationError('Se requiere contenido HTML válido', 400);
     }
+    
+    // Normalizar parámetros
+    const options = {
+      title: body.title || 'documento',
+      format: body.format || 'A4',
+      landscape: body.landscape || false,
+      marginTop: body.marginTop || '1cm',
+      marginRight: body.marginRight || '1cm',
+      marginBottom: body.marginBottom || '1cm',
+      marginLeft: body.marginLeft || '1cm',
+      printBackground: body.printBackground !== undefined ? body.printBackground : true,
+      displayHeaderFooter: body.displayHeaderFooter || false,
+      headerTemplate: body.headerTemplate || '',
+      footerTemplate: body.footerTemplate || '',
+      scale: body.scale || 1
+    };
+    
+    logger.info('Generando PDF', { title: options.title, format: options.format });
+    
+    // Generar PDF utilizando el servicio mejorado
+    const pdfBuffer = await generatePdf(body.htmlContent, options);
+
+    // Crear respuesta con el buffer del PDF
+    const safeTitle = options.title.replace(/[^\w\s.-]/g, "").replace(/\s+/g, "_");
+    const filename = `${safeTitle}.pdf`;
+
+    // Devolver el PDF como un blob para descargar
+    return new NextResponse(pdfBuffer, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="${filename}"`,
+      },
+    });
+  } catch (error) {
+    return handleApiError(error);
+  }
 }
