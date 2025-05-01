@@ -1,6 +1,6 @@
 // /app/api/generate-pdf/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { logger, handleApiError, PDFGenerationError } from '@/lib/error-handling';
+import { handleApiError, PDFGenerationError } from '@/lib/error-handling';
 import { generatePdf } from '@/services/pdf';
 
 export const dynamic = 'force-dynamic'; // Asegura que no se cachee
@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
       scale: body.scale || 1
     };
     
-    logger.info('Generando PDF', { title: options.title, format: options.format });
+    console.info('Generando PDF', { title: options.title, format: options.format });
     
     // Generar PDF utilizando el servicio mejorado
     const pdfBuffer = await generatePdf(body.htmlContent, options);

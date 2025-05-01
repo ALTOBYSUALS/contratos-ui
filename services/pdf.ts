@@ -1,5 +1,5 @@
 import puppeteer, { Browser } from 'puppeteer';
-import { logger, PDFGenerationError, withRetry } from '../lib/error-handling';
+import { PDFGenerationError, withRetry } from '../lib/error-handling';
 import { config } from '../lib/config';
 
 // Cache del navegador para reutilizarlo entre invocaciones
@@ -34,7 +34,7 @@ async function getBrowser(): Promise<Browser> {
   }
   
   try {
-    logger.debug('Launching Puppeteer browser instance');
+    console.debug('Launching Puppeteer browser instance');
     
     // Optimizaciones para serverless
     const launchOptions = {
@@ -61,10 +61,10 @@ async function getBrowser(): Promise<Browser> {
       // Si estamos en producción, configuramos un cierre después de 5 minutos de inactividad
       setTimeout(() => {
         if (browserInstance === browser) {
-          logger.debug('Closing idle browser instance after timeout');
+          console.debug('Closing idle browser instance after timeout');
           browserInstance = null;
           browser.close().catch(err => 
-            logger.error('Error closing idle browser', err)
+            console.error('Error closing idle browser', err)
           );
         }
       }, 5 * 60 * 1000);
@@ -73,7 +73,7 @@ async function getBrowser(): Promise<Browser> {
     browserInstance = browser;
     return browser;
   } catch (error) {
-    logger.error('Failed to launch Puppeteer browser', error);
+    console.error('Failed to launch Puppeteer browser', error);
     throw new PDFGenerationError(`Failed to launch browser: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
@@ -100,7 +100,7 @@ export async function generatePdf(
       let page = null;
       
       try {
-        logger.info('Starting PDF generation', { title: options.title });
+        console.info('Starting PDF generation', { title: options.title });
         browser = await getBrowser();
         
         // Crear una nueva página
@@ -147,14 +147,14 @@ export async function generatePdf(
           scale: pdfOptions.scale
         });
         
-        logger.info('PDF generation successful', { 
+        console.info('PDF generation successful', { 
           title: options.title, 
           size: `${pdfBuffer.length} bytes` 
         });
         
         return Buffer.from(pdfBuffer);
       } catch (error) {
-        logger.error('Error generating PDF', error, { title: options.title });
+        console.error('Error generating PDF', error, { title: options.title });
         
         // Verificar si el error es un problema conocido y dar un mensaje más claro
         const errorMessage = error instanceof Error ? error.message : String(error);
@@ -168,7 +168,7 @@ export async function generatePdf(
         // Cerrar la página si aún está abierta
         if (page) {
           await page.close().catch(err => 
-            logger.error('Error cerrando página Puppeteer', err)
+            console.error('Error cerrando página Puppeteer', err)
           );
         }
       }
@@ -177,7 +177,7 @@ export async function generatePdf(
       retries: 2,
       delay: 500,
       onRetry: (err, attempt) => {
-        logger.warn(`Reintentando generación de PDF (${attempt}/2) después de error: ${err.message || err}`);
+        console.warn(`Reintentando generación de PDF (${attempt}/2) después de error: ${err.message || err}`);
       }
     }
   );
@@ -212,9 +212,9 @@ export async function closeBrowser(): Promise<void> {
   if (browserInstance && browserInstance.isConnected()) {
     try {
       await browserInstance.close();
-      logger.debug('Puppeteer browser instance closed successfully');
+      console.debug('Puppeteer browser instance closed successfully');
     } catch (error) {
-      logger.error('Error closing Puppeteer browser', error);
+      console.error('Error closing Puppeteer browser', error);
     } finally {
       browserInstance = null;
     }

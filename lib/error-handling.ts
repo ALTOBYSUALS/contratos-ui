@@ -136,47 +136,43 @@ export function handleApiError(error: unknown): NextResponse {
   );
 }
 
-/**
- * Logger estructurado para la aplicación
- */
-export const logger = {
-  info: (message: string, metadata?: Record<string, any>) => {
-    console.log(JSON.stringify({
-      level: 'info',
+// Exportar funciones simples de logging para usar en caso necesario
+export function logInfo(message: string, metadata?: Record<string, any>): void {
+  console.log(JSON.stringify({
+    level: 'info',
+    timestamp: new Date().toISOString(),
+    message,
+    ...metadata
+  }));
+}
+
+export function logWarn(message: string, metadata?: Record<string, any>): void {
+  console.warn(JSON.stringify({
+    level: 'warn',
+    timestamp: new Date().toISOString(),
+    message,
+    ...metadata
+  }));
+}
+
+export function logError(message: string, error?: any, metadata?: Record<string, any>): void {
+  console.error(JSON.stringify({
+    level: 'error',
+    timestamp: new Date().toISOString(),
+    message,
+    errorMessage: error?.message,
+    stack: error?.stack,
+    ...metadata
+  }));
+}
+
+export function logDebug(message: string, metadata?: Record<string, any>): void {
+  if (process.env.DEBUG_MODE === 'true') {
+    console.debug(JSON.stringify({
+      level: 'debug',
       timestamp: new Date().toISOString(),
       message,
       ...metadata
     }));
-  },
-  
-  warn: (message: string, metadata?: Record<string, any>) => {
-    console.warn(JSON.stringify({
-      level: 'warn',
-      timestamp: new Date().toISOString(),
-      message,
-      ...metadata
-    }));
-  },
-  
-  error: (message: string, error?: any, metadata?: Record<string, any>) => {
-    console.error(JSON.stringify({
-      level: 'error',
-      timestamp: new Date().toISOString(),
-      message,
-      errorMessage: error?.message,
-      stack: error?.stack,
-      ...metadata
-    }));
-  },
-  
-  debug: (message: string, metadata?: Record<string, any>) => {
-    if (process.env.DEBUG_MODE === 'true') {
-      console.debug(JSON.stringify({
-        level: 'debug',
-        timestamp: new Date().toISOString(),
-        message,
-        ...metadata
-      }));
-    }
   }
-}; 
+} 
