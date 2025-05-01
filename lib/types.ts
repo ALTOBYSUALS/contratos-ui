@@ -1,125 +1,120 @@
 // En: lib/types.ts
+// Definiciones de tipos centrales para la aplicación de contratos
 
-// Asegúrate de que CADA interfaz/tipo que uses fuera de este archivo tenga 'export'
+// --- Tipos relacionados con Contratos Generales y Plantillas ---
 
-export interface ParticipantFinal { // Ya la tenías, asegúrate que tenga 'export'
-    email: string;
-    name: string;
-    role: string;
-    percentage: number;
+export interface GeneralContractData {
+    jurisdiction: string; // Requerido (según tu lógica `isGeneralDataComplete`)
+    fecha: string;        // Requerido
+    trackTitle: string;   // Requerido
+    lugarDeFirma?: string; // Opcional
+    areaArtistica?: string; // Opcional
+    duracionContrato?: string; // Opcional
+    periodoAviso?: string; // Opcional
+    porcentajeComision?: string | number; // <-- AÑADIDO Y OPCIONAL
   }
   
-  export interface GeneralContractData { // Ya la tenías, añade los nuevos campos opcionales
-    jurisdiction: string;
-    fecha: string;
-    trackTitle: string;
-    lugarDeFirma?: string;
-    // --- CAMPOS OPCIONALES AÑADIDOS ---
-    areaArtistica?: string;
-    duracionContrato?: string;
-    periodoAviso?: string;
-    // --- FIN DE CAMPOS AÑADIDOS ---
+  export interface Template {
+    id: string | number; // Puede venir de Notion como string o DB como number
+    title: string;
+    category: string;
+    description: string;
+    content: string; // Contenido HTML de la plantilla
   }
   
-  // --- ASEGÚRATE QUE ESTAS TAMBIÉN TENGAN 'export' ---
+  export interface SentContract {
+    id: number | string;
+    title: string;
+    content: string; // El contenido final que se envió
+    participants: ParticipantFinal[]; // Usamos el tipo ParticipantFinal
+    date: string; // Fecha ISO de envío
+    status?: string; // Ej: 'Enviado', 'Firmado Parcialmente', 'Firmado', 'Rechazado'
+    notionPageId?: string; // ID de la página en Notion si se crea/vincula
+  }
   
-  export interface Client { // Necesaria para 'clients' y 'createClientObject'
-      id: string;
-      name: string;
-      firstName: string;
-      lastName: string;
+  // --- Tipos relacionados con Clientes/Participantes ---
+  
+  export interface Client {
+    id: string;
+    name: string; // Nombre a mostrar (puede ser FullName o email si no hay nombre)
+    firstName: string;
+    lastName: string;
+    email: string; // Campo clave para identificar participantes
+    phone?: string;
+    role?: string; // Ej: 'Artist', 'Producer', 'Label', etc.
+    publisherIpi?: string;
+    dateOfBirth?: string;
+    passport?: string; // DNI/Pasaporte
+    expirationDate?: string; // Fecha expiración documento
+    address?: string;
+    country?: string;
+    added?: string; // Fecha ISO de creación/añadido
+    // Redes Sociales
+    facebook?: string;
+    instagram?: string;
+    linkedin?: string;
+    twitter?: string;
+    // Datos Sello (si aplica)
+    labelName?: string;
+    labelEmail?: string;
+    labelPhone?: string;
+    labelAddress?: string;
+    labelCountry?: string;
+    // Datos Editorial (si aplica)
+    publisherName?: string;
+    publisherEmail?: string;
+    publisherPhone?: string;
+    publisherAddress?: string;
+    publisherCountry?: string;
+    // Campos Calculados (se generan en createClientObject)
+    FullName: string; // Nombre completo calculado
+    Firma: string;    // Placeholder de firma calculado
+  }
+  
+  export interface ParticipantFinal { // Para listas de participantes en contratos enviados/finalizados
       email: string;
-      phone?: string;
-      role?: string;
-      publisherIpi?: string;
-      dateOfBirth?: string;
-      passport?: string;
-      expirationDate?: string;
-      address?: string;
-      country?: string;
-      added?: string;
-      facebook?: string;
-      instagram?: string;
-      linkedin?: string;
-      twitter?: string;
-      labelName?: string;
-      labelEmail?: string;
-      labelPhone?: string;
-      labelAddress?: string;
-      labelCountry?: string;
-      publisherName?: string;
-      publisherEmail?: string;
-      publisherPhone?: string;
-      publisherAddress?: string;
-      publisherCountry?: string;
-      FullName: string;
-      Firma: string;
+      name: string;
+      role: string;
+      percentage: number; // Asegurarse que siempre tenga un valor numérico
+      // Podrías añadir clientId si lo necesitas vincular: clientId?: string;
   }
   
-  export interface Template { // Necesaria para 'templates' y 'selectedContract'
-      id: string | number;
-      title: string;
-      category: string;
-      description: string;
-      content: string;
+  
+  // --- Tipos relacionados con el Proceso de Firma ---
+  
+  export interface SignerInfo {
+      id: string; // ID único del registro del firmante (ej: ID de página Notion)
+      name: string;
+      email: string;
+      signedAt: string | null; // Fecha ISO de firma o null
+      // Coordenadas y tamaño para estampar la firma en el PDF final
+      pageNumber: number; // Página donde va la firma
+      posX: number;       // Posición X (desde la izquierda)
+      posY: number;       // Posición Y (¡IMPORTANTE! Define si es desde arriba o abajo de la página)
+      signatureWidth: number;
+      signatureHeight: number;
   }
   
-  export type SentContract = { // Necesaria para 'sentContracts'
-      id: number | string;
+  export interface ContractInfo {
+      id: string; // ID único del contrato (ej: ID de página Notion)
       title: string;
-      content: string;
-      participants: { name: string; email: string; role: string; percentage?: number }[];
-      date: string;
-      status?: string;
-      notionPageId?: string;
+      pdfUrl_draft: string | null; // URL (Vercel Blob?) del PDF *sin firmar* que se muestra
+      pdfUrl_signed?: string | null; // URL del PDF *firmado* (se actualiza al completar)
+      status?: string; // 'EnviadoParaFirma', 'Firmado', etc.
+  }
+  
+  // Tipo combinado usado por la API para devolver datos a la página de firma
+  export type SignerAndContractDataResult = {
+      signer: SignerInfo;
+      contract: ContractInfo;
   };
   
-  // Puedes tener otros tipos exportados aquí también...
-  // En: lib/types.ts
-
-// ... (tus interfaces existentes: ParticipantFinal, GeneralContractData, Client, Template, SentContract) ...
-
-// --- AÑADIR ESTAS DEFINICIONES ---
-
-export interface SignerInfo {
-    id: string; // ID de la página Notion del firmante
-    name: string;
-    email: string;
-    signedAt: string | null; // Fecha ISO de firma o null si no ha firmado
-    // Coordenadas y tamaño para colocar la firma en el PDF
-    pageNumber: number;
-    posX: number;
-    posY: number; // Posición Y desde la parte SUPERIOR de la página (como se podría guardar en Notion)
-    signatureWidth: number;
-    signatureHeight: number;
-}
-
-export interface ContractInfo {
-    id: string; // ID de la página Notion del contrato
-    title: string;
-    pdfUrl_draft: string | null; // URL del PDF borrador en Vercel Blob
-    pdfUrl_signed?: string | null; // URL del PDF firmado (opcional, se rellena al final)
-    status?: string; // Estado actual del contrato (ej: 'EnviadoParaFirma', 'Firmado')
-}
-
-// Tipo que combina la información para la página de firma
-export type SignerAndContractDataResult = {
-    signer: SignerInfo;
-    contract: ContractInfo;
-};
-
-// --- FIN DE LAS DEFINICIONES A AÑADIR ---
-
-// Puedes tener otros tipos aquí...
-// En /lib/types.ts
-
-// ... (Otras interfaces: Client, Template, SentContract, SignerInfo, etc.) ...
-
-// --- AÑADIR O ASEGURARSE DE QUE ESTO ESTÉ EXPORTADO ---
-export interface SignatureClientProps {
-    token: string;          // El token JWT de la URL
-    signerName: string;     // Nombre del firmante para mostrar
-    contractPdfUrl: string; // URL del PDF borrador para mostrar
-    // Puedes añadir más props si las necesitas pasar desde page.tsx
-}
-// --- FIN ---
+  // Props para el componente cliente de la página de firma
+  export interface SignatureClientProps {
+      token: string;          // El token JWT de la URL
+      signerName: string;     // Nombre del firmante (obtenido del token o API)
+      contractPdfUrl: string; // URL del PDF borrador (obtenido de la API)
+      // Añadir más props según sea necesario desde page.tsx
+  }
+  
+  // --- FIN --- Puedes añadir otros tipos/interfaces aquí si los necesitas ---

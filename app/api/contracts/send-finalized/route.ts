@@ -6,6 +6,11 @@ import { put } from '@vercel/blob';
 import { Resend } from 'resend';
 import { createNotionContract, createNotionSigner } from '@/services/notion';
 import type {GeneralContractData, } from '@/lib/types'; // Asegúrate de importar de /lib
+import { enviarCorreo } from '@/services/email';
+import { jsPDF } from 'jspdf';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 
 // --- Configuración Inicial (Leer desde .env) ---
 // NOTA: Usa '!' solo si estás MUY seguro que la variable existe tras el check inicial
@@ -59,9 +64,16 @@ export async function POST(request: NextRequest) {
                 localContractId?: string | number;
             };
 
-        if (!finalHtmlContent || !participants || participants.length === 0 || !contractTitle || !generalData) {
+        // --- ESTA ES LA VALIDACIÓN CLAVE ---
+        if (!finalHtmlContent || !participants || participants.length === 0 || !contractTitle || !generalData
+            // --- ¿HAY VALIDACIONES ADICIONALES AQUÍ O DENTRO DE generalData? ---
+            // || !generalData.jurisdiction // Ejemplo: ¿Es jurisdicción obligatoria?
+            // || !generalData.fecha
+           ) {
+            console.error("[Send Finalized API] Validation Failed:", { hasHtml: !!finalHtmlContent, numParticipants: participants?.length, hasTitle: !!contractTitle, hasGeneralData: !!generalData }); // Log detallado del fallo
             return NextResponse.json({ error: "Faltan datos esenciales en la solicitud (HTML, participantes, título, datos generales)." }, { status: 400 });
         }
+        // --- FIN VALIDACIÓN ---
         console.log(`[Send Finalized API] Iniciando para: ${contractTitle}`);
 
         // --- 1. Generar PDF Borrador ---
@@ -86,8 +98,8 @@ export async function POST(request: NextRequest) {
             await page.setContent(finalHtmlContent, { waitUntil: 'networkidle0' });
             // Opcional: añadir CSS básico
             // await page.addStyleTag({content: 'body { font-family: sans-serif; }'});
-            pdfBytesDraft = await page.pdf({ format: 'A4', printBackground: true, margin: { top: '72pt', right: '72pt', bottom: '72pt', left: '72pt' } });
-            console.log(`[Send Finalized API] PDF borrador generado (${pdfBytesDraft ? (pdfBytesDraft.length / 1024).toFixed(1) : 0} KB)`);
+            pdfBytesDraft = await page.pdf({ format: 'A4', printBackground: true, margin: { top: '1in', right: '1in', bottom: '1in', left: '1in' } });
+            console.log(`[Send Finalized API] PDF borrador generado (${pdfBytesDraft ? (pdfBytesDraft.length / 1024).toFixed(1) : 0} KB`);
             if (!pdfBytesDraft) throw new Error("Puppeteer no generó el buffer del PDF.");
 
         } catch (pdfError: unknown) { // <-- CORREGIDO: unknown
@@ -182,6 +194,9 @@ export async function POST(request: NextRequest) {
         const notionContractPageId = contractRecord.id;
         console.log("[Send Finalized API] Registro de contrato creado en Notion:", notionContractPageId);
 
+        // 3. Guardar el contrato en la base de datos
+        // Nota: El contrato ya fue guardado en Notion con createNotionContract
+        // Si necesitas esta funcionalidad, implementa 'guardarContratoEnNotion' en @/services/notion
 
         // --- 5. Generar Tokens FINALES y Enviar Emails ---
         console.log("[Send Finalized API] Generando tokens finales y enviando emails...");
@@ -194,6 +209,12 @@ export async function POST(request: NextRequest) {
 
              const signLink = `${baseUrl}/sign/${finalSignatureToken}`; // Usa 'baseUrl'
 
+             // Añadir antes del bloque de envío:
+             if (!signerInfo.email || !signerInfo.email.includes('@')) {
+                 console.error(`[Send Finalized API] Email inválido para ${signerInfo.name}: ${signerInfo.email}`);
+                 return; // Retornar temprano en lugar de continue
+             }
+
               // Enviar Email (SOLO si Resend está configurado)
               if (resend) {
                   try {
@@ -204,18 +225,36 @@ export async function POST(request: NextRequest) {
                          // TODO: Considera usar @react-email para plantillas HTML más robustas
                          html: `<p>Hola ${signerInfo.name},</p><p>Por favor, revisa y firma el contrato "${contractTitle}" haciendo clic en el siguiente enlace:</p><p style="margin: 20px 0;"><a href="${signLink}" style="padding: 10px 15px; background-color: #4f46e5; color: white; text-decoration: none; border-radius: 5px;">Revisar y Firmar Contrato</a></p><p>Este enlace es único para ti y expirará en 7 días.</p><p>Si no puedes hacer clic en el botón, copia y pega esta URL en tu navegador:</p><p><small>${signLink}</small></p>`,
                        });
-                       console.log(`[Send Finalized API] Email enviado a ${signerInfo.email}`);
-                   } catch (emailError: unknown) { // <-- CORREGIDO: unknown
-                       console.error(`[Send Finalized API] Error enviando email a ${signerInfo.email}:`, emailError);
-                       // Log más detallado si es un Error
-                       if (emailError instanceof Error) {
-                            console.error(`[Send Finalized API] Detalle error email: ${emailError.message}`);
+                       console.log(`[Send Finalized API] Email enviado a ${signerInfo.email} con Resend`);
+                   } catch (emailError: unknown) {
+                       console.error(`[Send Finalized API] Error con Resend:`, emailError);
+                       // NUEVO: FALLBACK A NODEMAILER
+                       try {
+                           await enviarCorreo(
+                               signerInfo.email,
+                               `Acción Requerida: Firmar Contrato - ${contractTitle}`,
+                               `Hola ${signerInfo.name}, Por favor firma el contrato "${contractTitle}" en: ${signLink}`,
+                               `<p>Hola ${signerInfo.name},</p><p>Por favor, revisa y firma el contrato "${contractTitle}" haciendo clic en el siguiente enlace:</p><p style="margin: 20px 0;"><a href="${signLink}" style="padding: 10px 15px; background-color: #4f46e5; color: white; text-decoration: none; border-radius: 5px;">Revisar y Firmar Contrato</a></p>`
+                           );
+                           console.log(`[Send Finalized API] Email enviado a ${signerInfo.email} con Nodemailer (fallback)`);
+                       } catch (nodemailerError) {
+                           console.error(`[Send Finalized API] Error también con Nodemailer:`, nodemailerError);
+                           // Aquí ambos métodos fallaron
                        }
-                       // Decide si quieres continuar o fallar si un email no se envía
                    }
                } else {
-                    // Si Resend no está configurado, al menos muestra el link en consola para pruebas
-                    console.warn(`[Send Finalized API] Email no enviado a ${signerInfo.email} (Resend no config). Link de firma (para pruebas): ${signLink}`);
+                   // Si Resend no está configurado, usar directamente Nodemailer
+                   try {
+                       await enviarCorreo(
+                           signerInfo.email,
+                           `Acción Requerida: Firmar Contrato - ${contractTitle}`,
+                           `Hola ${signerInfo.name}, Por favor firma el contrato "${contractTitle}" en: ${signLink}`,
+                           `<p>Hola ${signerInfo.name},</p><p>Por favor, revisa y firma el contrato "${contractTitle}" haciendo clic en el siguiente enlace:</p><p style="margin: 20px 0;"><a href="${signLink}" style="padding: 10px 15px; background-color: #4f46e5; color: white; text-decoration: none; border-radius: 5px;">Revisar y Firmar Contrato</a></p>`
+                       );
+                       console.log(`[Send Finalized API] Email enviado a ${signerInfo.email} con Nodemailer`);
+                   } catch (nodemailerError) {
+                       console.error(`[Send Finalized API] Error con Nodemailer:`, nodemailerError);
+                   }
                }
          });
 
@@ -241,4 +280,51 @@ export async function POST(request: NextRequest) {
         // --- FIN VERIFICACIÓN ---
         return NextResponse.json({ success: false, error: errorMessage }, { status: 500 });
     }
+}
+
+// Función auxiliar para generar el PDF del contrato
+async function generateContractPDF(htmlContent: string, title: string): Promise<string> {
+  // Crear un nombre de archivo seguro
+  const safeTitle = title.replace(/[^\w\s.-]/g, "").replace(/\s+/g, "_");
+  const tempDir = os.tmpdir();
+  const pdfPath = path.join(tempDir, `${safeTitle}_${Date.now()}.pdf`);
+  
+  // Lanzar puppeteer para generar el PDF
+  const browser = await puppeteer.launch({
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--single-process'
+    ],
+    headless: true
+  });
+  
+  const page = await browser.newPage();
+  await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+  
+  // Añadir estilos para mejorar la apariencia del PDF
+  await page.addStyleTag({
+    content: `
+      body { font-family: Georgia, serif; line-height: 1.6; }
+      h1 { font-size: 18pt; text-align: center; }
+      h2 { font-size: 14pt; }
+    `
+  });
+  
+  // Generar el PDF
+  await page.pdf({
+    path: pdfPath,
+    format: 'A4',
+    printBackground: true,
+    margin: {
+      top: '1cm',
+      right: '1cm',
+      bottom: '1cm',
+      left: '1cm',
+    },
+  });
+  
+  await browser.close();
+  return pdfPath;
 }

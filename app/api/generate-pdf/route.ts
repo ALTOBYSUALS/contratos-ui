@@ -37,16 +37,25 @@ export async function POST(req: NextRequest) {
         await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
         console.log("API generate-pdf: HTML content set on page.");
 
+        // Establecer CSS para impresión de alta calidad
+        await page.addStyleTag({
+            content: `
+                body { font-family: Georgia, serif; line-height: 1.6; }
+                h1 { font-size: 18pt; text-align: center; }
+                /* más estilos... */
+            `
+        });
+
         // Generar el PDF
         console.log("API generate-pdf: Generating PDF...");
         const pdfBuffer = await page.pdf({
             format: 'A4', // Formato de página
             printBackground: true, // Incluir fondos CSS si los hubiera
             margin: { // Márgenes (puedes ajustarlos)
-                top: '1in',
-                right: '1in',
-                bottom: '1in',
-                left: '1in',
+                top: '1cm',
+                right: '1cm',
+                bottom: '1cm',
+                left: '1cm',
             },
         });
         console.log("API generate-pdf: PDF generated (buffer length):", pdfBuffer.length);

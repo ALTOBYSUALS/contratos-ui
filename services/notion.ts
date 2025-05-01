@@ -1,5 +1,15 @@
 // Ruta Completa: /services/notion.ts
-import type { SentContract } from '@/components/contracts/ContractLibrary'; // Al principio del archivo
+
+// Define SentContract interface directly in this file
+export interface SentContract {
+  id: string;
+  notionPageId: string;
+  title: string;
+  content: string;
+  participants: any[]; // Define more specific type if needed
+  date: string;
+  status: string;
+}
 import { Client } from "@notionhq/client";
 import type {
   PageObjectResponse,
@@ -23,7 +33,7 @@ if (!firmantesDbId) { console.error("[Notion Service Init] NOTION_DB_SIGNERS no 
 
 // --- Interfaces Principales ---
 export interface ContractTemplate { id: string; title: string; category: string; description: string; content: string; }
-export interface CrmClient { id: string; name: string; email: string; role: string; phone?: string; }
+export interface CrmClient { id: string; name: string; email: string; role: string; phone?: string; passport?: string; address?: string; }
 
 // Datos necesarios para crear un nuevo registro de firmante
 export interface SignerDataInput {
@@ -132,9 +142,19 @@ export async function listarClientes(): Promise<CrmClient[]> {
                 const email = getEmail(getProp(page, 'Email'));
                 const role = getSelectName(getProp(page, 'Role')) ?? 'Unknown';
                 const phone = getPhoneNumber(getProp(page, 'Phone'));
+                const passport = getRichTextPlainText(getProp(page, 'Passport')) ?? '';
+                const address = getRichTextPlainText(getProp(page, 'Address')) ?? '';
 
                 if (!email) { console.warn(`Cliente CRM ${page.id} omitido (sin email).`); return null; }
-                return { id: page.id, name: `${firstName} ${lastName}`.trim() || email, email, role, phone };
+                return { 
+                    id: page.id, 
+                    name: `${firstName} ${lastName}`.trim() || email, 
+                    email, 
+                    role, 
+                    phone,
+                    passport,
+                    address
+                };
             } catch (mapError) { console.error(`Error mapeando cliente CRM ${page.id}`, mapError); return null; }
         });
         const validClients = mappedResults.filter((c): c is CrmClient => c !== null);

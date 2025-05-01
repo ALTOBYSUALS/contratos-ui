@@ -1,4 +1,3 @@
-
 // components/contracts/ContractLibrary.tsx
 "use client";
 // --- ESTA LÍNEA DEBE QUEDARSE ---
@@ -34,7 +33,7 @@ import {
     X, Save, UserPlus, Download, Trash2, Edit, Percent, AlertTriangle,
     Bold, Italic, Sparkles, Upload, Search, Strikethrough, ListOrdered, List,
     ArrowLeft, Library, Send, CheckCircle, Users, Eye, Edit2, Plus, Settings2,
-    Code, Quote, Underline, ImagePlus, Loader2 // Added Loader icon
+    Code, Quote, Underline, ImagePlus, Loader2, RefreshCw // Added Loader icon
 } from "lucide-react";
 // -----------------------
 
@@ -43,15 +42,65 @@ import {
 import type { Client, Template, SentContract, GeneralContractData } from '@/lib/types';
 // --- FIN DE LÍNEA A MANTENER ---
 
-import React, { useState, useRef, useEffect, useCallback, ChangeEvent } from "react";
+import React, { useState, useRef, useEffect, useCallback, ChangeEvent, useMemo } from "react";
 
-const INITIAL_NEW_CLIENT_STATE: Partial<Omit<Client, "id" | "added" | "FullName" | "Firma">> = {
-    firstName: "", lastName: "", email: "", phone: "", role: "", publisherIpi: "", dateOfBirth: "", passport: "", expirationDate: "", address: "", country: "", facebook: "", instagram: "", linkedin: "", twitter: "", labelName: "", labelEmail: "", labelPhone: "", labelAddress: "", labelCountry: "", publisherName: "", publisherEmail: "", publisherPhone: "", publisherAddress: "", publisherCountry: ""
+// Custom debounce implementation to replace lodash.debounce
+function debounce<F extends (...args: any[]) => any>(func: F, waitFor: number) {
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+
+  const debounced = (...args: Parameters<F>) => {
+    if (timeout !== null) {
+      clearTimeout(timeout);
+    }
+    timeout = setTimeout(() => func(...args), waitFor);
+  };
+
+  return debounced as (...args: Parameters<F>) => ReturnType<F>;
+}
+
+// --- CORRECCIÓN: Definir la constante aquí ---
+const INITIAL_GENERAL_DATA: GeneralContractData = {
+    jurisdiction: "",
+    fecha: "",
+    trackTitle: "",
+    lugarDeFirma: "",
+    areaArtistica: "",
+    duracionContrato: "",
+    periodoAviso: "",
+    porcentajeComision: "", // Asegúrate de que esto sea "" y no undefined
 };
-const INITIAL_NEW_TEMPLATE_STATE = { title: "", category: "", description: "", content: "" };
 
+// --- También define el estado inicial para el formulario de nuevo cliente ---
+const INITIAL_NEW_CLIENT_STATE: Partial<Client> = {
+    firstName: "",
+    lastName: "",
+    email: "",
+    role: "",
+    passport: "",
+    phone: "",
+    address: "",
+    country: "",
+    instagram: "",
+    facebook: "",
+    twitter: "",
+    linkedin: "",
+    labelName: "",
+    labelEmail: "",
+    labelPhone: "",
+    publisherName: "",
+    publisherIpi: "",
+    publisherEmail: "",
+    // Añade publisherPhone si existe en tu tipo Client
+};
 
-// --- Helper Function: createClientObject ---
+// --- Y para el formulario de nueva plantilla ---
+const INITIAL_NEW_TEMPLATE_STATE: Partial<Template> = {
+    title: "",
+    category: "",
+    description: "",
+    content: "",
+};
+
 const createClientObject = (data: Record<string, any>, idOverride?: string): Client => { // Manteniendo any aquí, ya que ESLint está en 'warn'
     const firstName = data.firstName?.trim() || "";
     const lastName = data.lastName?.trim() || "";
@@ -145,15 +194,7 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
 const ContractLibrary = () => { // <--- Inicio del componente
 
     // ***** PÉGALO AQUÍ *****
-    const [generalData, setGeneralData] = useState<GeneralContractData>({
-        jurisdiction: "",
-        fecha: "",
-        trackTitle: "",
-        lugarDeFirma: "",
-        areaArtistica: "",
-        duracionContrato: "",
-        periodoAviso: "",
-    });
+    const [generalData, setGeneralData] = useState<GeneralContractData>(INITIAL_GENERAL_DATA);
     // ***** FIN *****
     const [templates, setTemplates] = useState<Template[]>([]);
     const [clients, setClients] = useState<Client[]>([]);
@@ -171,7 +212,7 @@ const ContractLibrary = () => { // <--- Inicio del componente
     const [participantPercentages, setParticipantPercentages] = useState<{ [email: string]: number }>({});
 
     const [step, setStep] = useState(0); // 0: Library, 1: Preview, 2: Editor, 3: Sent, 4: CRM (via crmMode), 5: Signed
-    const [crmMode, setCrmMode] = useState(false);
+    // const [crmMode, setCrmMode] = useState(false);
 
     const [searchQuery, setSearchQuery] = useState(""); // For participant search in editor sidebar
     const [templateSearchQuery, setTemplateSearchQuery] = useState(""); // For library/CRM search
@@ -184,11 +225,12 @@ const ContractLibrary = () => { // <--- Inicio del componente
     const [viewingSentContract, setViewingSentContract] = useState<SentContract | null>(null);
     const [confirmingDeleteClient, setConfirmingDeleteClient] = useState<Client | null>(null);
     const [confirmingDeleteTemplate, setConfirmingDeleteTemplate] = useState<Template | null>(null); // For template deletion confirmation
+    const [editingClient, setEditingClient] = useState<Client | null>(null);
 
     const [newClient, setNewClient] = useState<Partial<Client>>(INITIAL_NEW_CLIENT_STATE);
-    const [editingClient, setEditingClient] = useState<Client | null>(null);
-    const [editedClientData, setEditedClientData] = useState<Partial<Client>>({}); // Store only changes
-    const [newTemplate, setNewTemplate] = useState(INITIAL_NEW_TEMPLATE_STATE);
+    
+    const [editedClientData, setEditedClientData] = useState<Partial<Client>>({});
+    const [newTemplate, setNewTemplate] = useState<Partial<Template>>(INITIAL_NEW_TEMPLATE_STATE);
     const [templateToEdit, setTemplateToEdit] = useState<Template | null>(null); // Holds full template being edited
     const [aiPrompt, setAiPrompt] = useState("");
 
@@ -204,6 +246,12 @@ const ContractLibrary = () => { // <--- Inicio del componente
     const fileInputRef = useRef<HTMLInputElement>(null);
     const toolbarRef = useRef<HTMLDivElement>(null);
 
+    const [tempContent, setTempContent] = useState("");
+    const updateContentDebounced = useCallback(
+        debounce((content) => setEditedContent(content), 100),
+        []
+    );
+
     // --- Data Fetching ---
     useEffect(() => {
         // Define la función asíncrona DENTRO del useEffect
@@ -217,6 +265,8 @@ const ContractLibrary = () => { // <--- Inicio del componente
                     fetch('/api/clients'),
                     fetch('/api/contracts')
                 ]);
+
+                
 
                 // Validaciones de respuesta...
                 if (!templatesRes.ok) throw new Error(`Plantillas API Error: ${templatesRes.status} ${templatesRes.statusText}`);
@@ -257,44 +307,60 @@ const ContractLibrary = () => { // <--- Inicio del componente
     }, []); // <-- Array de dependencias vacío para que se ejecute solo una vez al montar
 
 
+        // --- INICIO --- Copia desde aquí
+
     // --- Placeholder Replacement Logic (con Logs y manejo de tipos y dependencias) ---
-     const applyAllDataToContent = useCallback(() => {
-        console.log(`>>> applyAllDataToContent called. Current step: ${step}`); // Log inicial
+    const applyAllDataToContent = useCallback(() => {
+        console.log('--- applyAllDataToContent START ---'); // Log inicio detallado
+        console.log(`>>> Called from step: ${step}`);
 
         // 1. Determinar el contenido base
-        let baseContentSource = "";
+        let baseContentSource = "Unknown";
         let baseContent = "";
 
+        // Prioridad 1: Contenido del editor si estamos en el paso 2 y la ref existe
         if (step === 2 && editorRef.current) {
             baseContent = editorRef.current.innerHTML;
             baseContentSource = "editorRef.current.innerHTML";
-            console.log(`>>> applyAllDataToContent: Trying editorRef.current.innerHTML.`);
-        } else if (editedContent) {
-            baseContent = editedContent;
-            baseContentSource = "editedContent state";
-            console.log(`>>> applyAllDataToContent: Falling back to editedContent state.`);
-        } else if (selectedContract?.content) {
+            console.log(`>>> Using source: editorRef.current.innerHTML.`);
+        }
+        // Prioridad 2: Estado 'editedContent' si no se usó la ref o estamos fuera del editor
+        // Evitar usar 'editedContent' si ya tomamos de la ref en el paso 2
+        else if (editedContent && baseContentSource !== "editorRef.current.innerHTML") {
+             baseContent = editedContent;
+             baseContentSource = "editedContent state";
+             console.log(`>>> Using source: editedContent state.`);
+        }
+        // Prioridad 3: Contenido original de la plantilla seleccionada
+        else if (selectedContract?.content) {
             baseContent = selectedContract.content;
             baseContentSource = "selectedContract.content";
-            console.log(`>>> applyAllDataToContent: Falling back to selectedContract.content.`);
-        } else {
+            console.log(`>>> Using source: selectedContract.content (fallback).`);
+        }
+        // Si NADA funcionó
+        else {
             baseContentSource = "None";
-            console.log(`>>> applyAllDataToContent: No base content source found.`);
+            console.log(`>>> CRITICAL: No base content source could be determined.`);
         }
 
-        console.log(`>>> applyAllDataToContent: Selected source: ${baseContentSource}`);
-        console.log(`>>> applyAllDataToContent: Base content (first 200): ${baseContent ? baseContent.substring(0, 200) + "..." : "EMPTY"}`);
 
+        // --- LOG CLAVE 1: CONTENIDO BASE ANTES DE REEMPLAZAR ---
+        console.log(`>>> Final Source Determined: ${baseContentSource}`);
+        console.log('<<< BASE CONTENT BEFORE REPLACE >>>:', baseContent); // <-- LOG IMPORTANTE
+        // Loguear si está vacío ANTES de retornar
         if (!baseContent || !baseContent.trim()) {
-            console.warn(">>> applyAllDataToContent: Base content is empty or whitespace. Returning empty string.");
-            return "";
+            console.warn(">>> BASE CONTENT IS EMPTY OR WHITESPACE! Returning empty string.");
+            return ""; // Retorna vacío si no hay base
         }
+        // ---------------------------------------------------------
 
-        let updatedContent = baseContent;
+        // Declare updatedContent here to make it accessible throughout the function
+        let updatedContent = baseContent; // Iniciar con el contenido base
 
         // --- 2. Reemplazar Datos Generales ---
         try {
-            console.log(">>> applyAllDataToContent: Replacing General Data...");
+            console.log('--- Replacing General Data ---', generalData); // Log datos generales
+            // Use the already declared updatedContent
             updatedContent = updatedContent.replace(/\[Jurisdiccion\]/gi, generalData.jurisdiction || "");
             updatedContent = updatedContent.replace(/\[Fecha\]/gi, generalData.fecha || "");
             updatedContent = updatedContent.replace(/\[trackTitle\]/gi, generalData.trackTitle || "");
@@ -302,88 +368,175 @@ const ContractLibrary = () => { // <--- Inicio del componente
             updatedContent = updatedContent.replace(/\[AreaArtistica\]/gi, generalData.areaArtistica || "");
             updatedContent = updatedContent.replace(/\[DuracionContrato\]/gi, generalData.duracionContrato || "");
             updatedContent = updatedContent.replace(/\[PeriodoAviso\]/gi, generalData.periodoAviso || "");
+             // AÑADE AQUÍ CUALQUIER OTRO PLACEHOLDER GENERAL QUE USES
+             // Ejemplo: updatedContent = updatedContent.replace(/\[NombreEmpresa\]/gi, "Mi Empresa S.L." || "");
+            // LÍNEA CORREGIDA:
+updatedContent = updatedContent.replace(
+    /\[PorcentajeComision\]/gi,
+    String(generalData.porcentajeComision || "0") // Cambiado de ?? a || para manejar strings vacías
+);
 
-        } catch (error: unknown) { console.error("Error replacing general placeholders:", error); } // Usa unknown
+        } catch (error: unknown) { console.error("Error replacing general placeholders:", error); }
 
         // --- 3. Reemplazar Datos de Participantes ---
         const participantReplacements: { [placeholder: string]: string } = {};
         if (selectedParticipants.length > 0 && clients.length > 0) {
-            console.log(">>> applyAllDataToContent: Preparing participant replacements...");
-            // --- CORRECCIÓN: Usar 'email' en lugar de '_email' ---
-            selectedParticipants.forEach((email) => { // <-- Corregido
-                const client = clients.find((c) => c.email === email); // <-- Corregido
-                const percentageStr = (participantPercentages[email] || 0).toFixed(2); // <-- Corregido
+            console.log('--- Replacing Participant Data ---', { selectedParticipants, participantPercentages }); // Log datos participantes
+            selectedParticipants.forEach((email) => {
+                const client = clients.find((c) => c.email === email);
+                const percentageStr = (participantPercentages[email] || 0).toFixed(2);
                 if (client) {
-                    const clientPlaceholders: Record<string, string | undefined> = { /* ... pon aquí TODAS las claves que necesitas */
+                    // Define TODOS los placeholders posibles para un cliente
+                    const clientPlaceholders: Record<string, string | undefined> = {
                         FullName: client.FullName, Name: client.name, FirstName: client.firstName,
-                        LastName: client.lastName, Email: client.email, Phone: client.phone, Role: client.role,
-                        Passport: client.passport, Address: client.address, Country: client.country, DOB: client.dateOfBirth,
+                        LastName: client.lastName, Email: client.email, Phone: client.phone,
+                        Role: client.role, Passport: client.passport, Address: client.address,
+                        Country: client.country, DOB: client.dateOfBirth, Firma: client.Firma,
                         Facebook: client.facebook, Instagram: client.instagram, Linkedin: client.linkedin, Twitter: client.twitter,
                         LabelName: client.labelName, LabelEmail: client.labelEmail, LabelPhone: client.labelPhone, LabelAddress: client.labelAddress, LabelCountry: client.labelCountry,
                         PublisherName: client.publisherName, PublisherEmail: client.publisherEmail, PublisherPhone: client.publisherPhone, PublisherAddress: client.publisherAddress, PublisherCountry: client.publisherCountry,
-                        PublisherIpi: client.publisherIpi, Firma: client.Firma,
-                        Percentage: percentageStr, // Usa percentageStr
-                         // ... otros placeholders derivados ...
+                        PublisherIpi: client.publisherIpi,
+                        Percentage: percentageStr, // El porcentaje calculado
+                        // ...otros placeholders derivados que necesites...
                     };
+
                     const rolePrefix = client.role ? client.role.charAt(0).toUpperCase() + client.role.slice(1) : "";
+
                     Object.entries(clientPlaceholders).forEach(([key, value]) => {
+                         // Solo añadir si el valor no es undefined
                         if (value !== undefined) {
-                             if (rolePrefix) participantReplacements[`[${rolePrefix}${key}]`] = value;
+                             // Crear placeholder específico del rol (ej. [ArtistFullName])
+                            if (rolePrefix) {
+                                // Evita sobrescribir si ya existe (primer participante con ese rol tiene prioridad)
+                                const specificPlaceholder = `[${rolePrefix}${key}]`;
+                                if (!(specificPlaceholder in participantReplacements)) {
+                                    participantReplacements[specificPlaceholder] = value;
+                                }
+                            }
+                            // Crear placeholder genérico (ej. [FullName]), solo si no existe ya
+                            // para evitar que un rol posterior sobrescriba al primero si hay varios participantes
                              const genericPlaceholder = `[${key}]`;
-                             if (!participantReplacements[genericPlaceholder]) participantReplacements[genericPlaceholder] = value;
+                             if (!(genericPlaceholder in participantReplacements)) {
+                                 participantReplacements[genericPlaceholder] = value;
+                             }
                         }
                     });
-                }
+
+                    // En la parte donde construyes los placeholders para cada cliente según su rol
+                    // (dentro de la función applyAllDataToContent)
+
+                    // Para el manager/representante
+                    if (client.role === 'Representante' || client.role === 'Manager') {
+                        // Placeholders existentes...
+                        updatedContent = updatedContent.replace(/\[ManagerFullName\]/gi, client.name || "");
+                        updatedContent = updatedContent.replace(/\[ManagerPassport\]/gi, client.passport || "");
+                        updatedContent = updatedContent.replace(/\[ManagerAddress\]/gi, client.address || "");
+                    }
+
+                    // Para el artista
+                    if (client.role === 'Artista') {
+                        // Placeholders existentes...
+                        updatedContent = updatedContent.replace(/\[ArtistFullName\]/gi, client.name || "");
+                        updatedContent = updatedContent.replace(/\[ArtistPassport\]/gi, client.passport || "");
+                        updatedContent = updatedContent.replace(/\[ArtistAddress\]/gi, client.address || "");
+                    }
+                } else {
+                     console.warn(`Client not found for email: ${email} during replacement.`);
+                 }
             });
+
             try {
-                console.log(">>> applyAllDataToContent: Performing participant replacements...");
+                 console.log('>>> Generated Participant Replacements:', participantReplacements); // Log para ver qué se va a reemplazar
+                // Ordenar por longitud descendente para reemplazar [ArtistFullName] antes que [FullName]
                 Object.keys(participantReplacements).sort((a, b) => b.length - a.length)
                     .forEach((placeholder) => {
-                        const replacementValue = participantReplacements[placeholder] ?? "";
-                        const escapedPlaceholder = placeholder.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
-                        const regex = new RegExp(escapedPlaceholder, "gi");
+                        const replacementValue = participantReplacements[placeholder] ?? ""; // Usar "" si es null/undefined
+                        const escapedPlaceholder = placeholder.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&"); // Escapar caracteres regex
+                        const regex = new RegExp(escapedPlaceholder, "gi"); // Global, case-insensitive
+                        // Log detallado de reemplazo (opcional, puede ser mucho output)
+                        // console.log(`Replacing ${regex} with "${replacementValue.substring(0,30)}..."`);
                         updatedContent = updatedContent.replace(regex, replacementValue);
                     });
-            } catch (error: unknown) { console.error("Error replacing participant placeholders:", error); } // Usa unknown
+            } catch (error: unknown) { console.error("Error replacing participant placeholders:", error); }
         } else {
-            console.log(">>> applyAllDataToContent: Skipping participant replacement.");
+            console.log("--- Skipping participant replacement (no participants selected or no clients loaded).");
         }
 
-               // --- 4. Generar y Reemplazar Bloques HTML (Listas/Firmas) ---
-               try {
-                console.log(">>> applyAllDataToContent: Generating list/signature blocks...");
-                // --- Usa const y map ---
-                 // --- CORRECCIÓN: Renombrar 'email' a '_email' ya que no se usa en los bloques vacíos ---
-                const collaboratorsList = selectedParticipants.map(_email => { /* TODO: lógica para generar <li> con datos de _email */ }).join(''); // <-- CORREGIDO A _email
-                const signaturesBlock = selectedParticipants.map(_email => { /* TODO: lógica para generar div de firma con datos de _email */ }).join(''); // <-- CORREGIDO A _email
-                // --- Construye HTML final de listas ---
-                const collaboratorListHtml = selectedParticipants.length > 0 ? `<ul>${collaboratorsList}</ul>` : "";
-                // --- CORRECCIÓN: Renombrar 'email' a '_email' ---
-                const collaboratorListNoPercentHtml = selectedParticipants.length > 0 ? `<ul>${selectedParticipants.map(_email => {/* TODO: lógica para generar <li> sin % */}).join('')}</ul>` : ""; // <-- CORREGIDO A _email
-                const signaturesHtml = selectedParticipants.length > 0 ? `<div style="margin-top: 40px;">${signaturesBlock}</div>` : "";
-                // --- Reemplaza ---
-                updatedContent = updatedContent.replace(/\[ListaColaboradoresConPorcentaje\]/gi, collaboratorListHtml);
-                updatedContent = updatedContent.replace(/\[ListaColaboradores\]/gi, collaboratorListNoPercentHtml);
-                updatedContent = updatedContent.replace(/\[FirmasColaboradores\]/gi, signaturesHtml);
-                updatedContent = updatedContent.replace(/\[Firmas\]/gi, signaturesHtml);
-            } catch (error: unknown) { console.error("Error replacing HTML block placeholders:", error); } // Usa unknown
-    // --- CORREGIDO: Array de Dependencias Añadido ---
-    }, [
-        step,
-        editedContent,
-        selectedContract,
-        generalData,
-        selectedParticipants,
-        clients, // <-- Añadido clients
-        participantPercentages
-        // editorRef no se incluye directamente para evitar re-renders excesivos
-    ]); // <-- Cierre de useCallback con dependencias
+        // Wrap block placeholder replacements in a try block
+        try {
+                // Puedes añadir lógica similar para collaboratorsList si la necesitas
+            
+
+           // Create collaborators list HTML with percentages
+           const collaboratorsList = selectedParticipants.map(email => {
+               const client = clients.find(c => c.email === email);
+               const percentage = participantPercentages[email] || 0;
+               return `<li><strong>${client?.FullName || client?.name || email}</strong>: ${percentage.toFixed(2)}%</li>`;
+           }).join('');
+           
+           const collaboratorListHtml = collaboratorsList ? `<ul>${collaboratorsList}</ul>` : "<p><em>[Lista de Colaboradores no generada]</em></p>"; // Reserva
+           // Create a simpler version without percentages or just reuse the one with percentages
+           const collaboratorListNoPercentHtml = selectedParticipants.map(email => {
+               const client = clients.find(c => c.email === email);
+               return `<li><strong>${client?.FullName || client?.name || email}</strong></li>`;
+           }).join('');
+           
+           // Generate signatures block
+           const signaturesBlock = selectedParticipants.map(email => {
+               const client = clients.find(c => c.email === email);
+               return `<div class="signature-block" style="margin-bottom: 30px;">
+                   <p>${client?.FullName || client?.name || email}</p>
+                   <p>_______________________</p>
+                   <p>${client?.role || 'Participante'}</p>
+               </div>`;
+           }).join('');
+           
+           // Reserva más robusta para firmas
+           const signaturesHtml = signaturesBlock ? `<div style="margin-top: 40px;">${signaturesBlock}</div>` : "<p style='margin-top: 50px; border-top: 1px dashed #ccc; padding-top: 10px;'><em>[Espacio para Firmas]</em></p>";
+
+           // Reemplaza siempre (ahora con reserva si es necesario)
+           updatedContent = updatedContent.replace(/\[ListaColaboradoresConPorcentaje\]/gi, collaboratorListHtml);
+           updatedContent = updatedContent.replace(/\[ListaColaboradores\]/gi, collaboratorListNoPercentHtml);
+           updatedContent = updatedContent.replace(/\[FirmasColaboradores\]/gi, signaturesHtml);
+           updatedContent = updatedContent.replace(/\[Firmas\]/gi, signaturesHtml);
+           console.log("Finished replacing block placeholders (with fallbacks if needed).");
+
+       } catch (error: unknown) { 
+           console.error("Error replacing HTML block placeholders:", error); 
+       }
+
+
+       // --- LOG CLAVE 2: CONTENIDO FINAL DESPUÉS DE REEMPLAZAR ---
+       console.log('<<< FINAL CONTENT AFTER REPLACE >>>:', updatedContent); // <-- LOG IMPORTANTE
+       console.log('--- applyAllDataToContent END ---'); // Log fin detallado
+
+       return updatedContent; // Devolver el contenido modificado (o no)
+
+   // --- Dependencias del useCallback ---
+   // Asegúrate de incluir todas las variables/estados que usas dentro
+   }, [
+       step,
+       editedContent,
+       selectedContract,
+       generalData,
+       selectedParticipants,
+       clients, // Esencial si lees datos de 'clients'
+       participantPercentages
+       // editorRef NO se incluye directamente para evitar re-renders excesivos,
+       // pero su valor se lee al principio de la función.
+   ]);
+
+   // --- FIN --- Copia hasta aquí
 
     // --- CORRECCIÓN: buildParticipantsPayload ELIMINADO porque no se usa ---
 
 
     // --- Derived Calculations ---
-    const totalPercentage = selectedParticipants.reduce((sum, email) => sum + (participantPercentages[email] || 0), 0);
+    const totalPercentage = useMemo(
+        () => selectedParticipants.reduce((sum, email) => sum + (participantPercentages[email] || 0), 0),
+        [selectedParticipants, participantPercentages]
+    );
+
     const filteredClientsForParticipants = clients.filter(c =>
         (c.FullName?.toLowerCase() || "").includes(searchQuery.toLowerCase()) ||
         (c.email?.toLowerCase() || "").includes(searchQuery.toLowerCase()) ||
@@ -394,41 +547,68 @@ const ContractLibrary = () => { // <--- Inicio del componente
         t.category.toLowerCase().includes(templateSearchQuery.toLowerCase()) ||
         t.description.toLowerCase().includes(templateSearchQuery.toLowerCase())
     );
-    const isGeneralDataComplete = !!generalData.jurisdiction && !!generalData.fecha && !!generalData.trackTitle;
+    const isGeneralDataComplete = useMemo(
+        () => !!generalData.jurisdiction && !!generalData.fecha && !!generalData.trackTitle,
+        [generalData]
+    );
 
     const hasRemainingPlaceholders = useCallback(() => {
         // No hay contrato ni contenido editado? Entonces no hay placeholders.
         if (!selectedContract && !editedContent) {
-             console.log("hasRemainingPlaceholders: No contract or edited content.");
-             return false;
+            console.log("hasRemainingPlaceholders: No contract or edited content.");
+            return false;
         }
 
         const finalContent = applyAllDataToContent();
 
-        // --- CORRECCIÓN: Verificar si finalContent es un string válido ANTES de .match() ---
+        // Verificar el contenido antes de la búsqueda de placeholders
         if (typeof finalContent === 'string' && finalContent.trim()) {
-            // Es un string con contenido, podemos buscar placeholders
-            const remaining = finalContent.match(/\[[^\]]+\]/g); // Busca [[Algo]]
-            console.log("hasRemainingPlaceholders: Found placeholders:", remaining);
-            // Devuelve true si se encontró algún match (remaining no es null y tiene longitud > 0)
+            // --- ACTUALIZAR ESTA LISTA ---
+            const critical = [
+                'Jurisdiccion','Fecha','trackTitle',
+                'ManagerFullName','ArtistFullName',
+                'ManagerPassport','ManagerAddress',
+                'ArtistPassport','ArtistAddress',
+                'PorcentajeComision','DuracionContrato','PeriodoAviso'
+            ];
+            // --- FIN ACTUALIZACIÓN ---
+
+            // Crear un patrón regex que busque SOLO placeholders críticos
+            const criticalPattern = new RegExp(`\\[(${critical.join('|')})\\]`, 'gi');
+            const remaining = finalContent.match(criticalPattern);
+            
+            console.log("hasRemainingPlaceholders: Critical placeholders found:", remaining);
             return remaining !== null && remaining.length > 0;
         } else {
-            // Si finalContent es "", null, undefined, o solo espacios, asumimos que no hay placeholders válidos.
             console.log("hasRemainingPlaceholders: finalContent is empty or invalid.");
             return false;
         }
-        // --------------------------------------------------------------------------
-
-        // El array de dependencias ya incluye todo lo necesario
     }, [applyAllDataToContent, selectedContract, editedContent]);
 
-    const isEditorReadyToSend =
-        selectedContract &&
-        selectedParticipants.length > 0 &&
-        Math.abs(totalPercentage - 100) < 0.01 && // Use a small tolerance for floating point
-        isGeneralDataComplete &&
-        (editedContent.trim() !== "" || (selectedContract?.content || "").trim() !== "") && // Ensure some content exists
-        !hasRemainingPlaceholders(); // Check if critical placeholders are gone
+    // Calculate the final content for other functions to use
+    const finalContent = useMemo(() => {
+        return applyAllDataToContent();
+    }, [applyAllDataToContent]);
+
+    const isEditorReadyToSend = useMemo(() => {
+        const conds = {
+            hasTemplate: !!selectedContract,
+            hasParticipants: selectedParticipants.length > 0,
+            percentagesOk: Math.abs(totalPercentage - 100) < 0.01,
+            generalComplete: isGeneralDataComplete,
+            contentNotEmpty: finalContent.trim().length > 0,
+            noPlaceholders: !hasRemainingPlaceholders(),
+        };
+        console.log('[Send Button Conditions]:', conds);
+        return Object.values(conds).every(Boolean);
+    }, [
+        selectedContract,
+        selectedParticipants,
+        totalPercentage,
+        isGeneralDataComplete,
+        finalContent,
+        hasRemainingPlaceholders,
+    ]);
 
     // --- Helper Function for Short Category Names ---
     const getShortCategory = (category: string): string => {
@@ -442,7 +622,7 @@ const ContractLibrary = () => { // <--- Inicio del componente
             case "LICENCIA SINCRONIZACIÓN": return "Sync";
             default: return category?.length > 8 ? category.substring(0, 6) + "..." : category || "N/A";
         }
-    };
+     }
 
     // --- Floating Toolbar Functions ---
     const updateToolbarState = useCallback(() => {
@@ -601,11 +781,11 @@ const ContractLibrary = () => { // <--- Inicio del componente
         if (editorRef.current) editorRef.current.innerHTML = ""; // Clear editor div directly
         setSelectedParticipants([]);
         setParticipantPercentages({});
-        setGeneralData({ jurisdiction: "", fecha: "", trackTitle: "", lugarDeFirma: "" });
+        setGeneralData(INITIAL_GENERAL_DATA); // Reset general data
         setSearchQuery(""); // Clear participant search
         setTemplateSearchQuery(""); // Clear library search
         setStep(0); // Go back to library view
-        setCrmMode(false); // Exit CRM mode
+        
         setShowFormattingToolbar(false); setToolbarPosition(null); setIsSelecting(false);
         // Reset forms
         setNewClient(INITIAL_NEW_CLIENT_STATE);
@@ -651,20 +831,19 @@ const ContractLibrary = () => { // <--- Inicio del componente
                 return rest;
             });
         }
-    };
-    const handleFontSizeChange = useCallback((size: string) => {
-        if (size) execCmd("fontSize", size); // Execute command if size is selected
-    }, [execCmd]);
 
-    const handleClientFormChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-        const { name, value } = e.target;
-        if (showAddClientSidebar) {
-            setNewClient((prev) => ({ ...prev, [name]: value }));
-        } else if (showEditClientSidebar && editingClient) {
-            // Store only the changed fields in editedClientData
-            setEditedClientData((prev) => ({ ...prev, [name]: value }));
+        // Forzar actualización del contenido cuando cambian los participantes
+        if (editorRef.current) {
+            const updatedContent = applyAllDataToContent();
+            editorRef.current.innerHTML = updatedContent;
+            setEditedContent(updatedContent);
+            console.log("Contenido actualizado tras cambio de participantes");
         }
     };
+    const handleFontSizeChange = useCallback((size: string) => {
+        // Execute the font size command with the selected size
+        execCmd('fontSize', size);
+    }, [execCmd]);
     const handleTemplateFormChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
         if (showCreateTemplateModal) {
@@ -809,17 +988,14 @@ const ContractLibrary = () => { // <--- Inicio del componente
                  }
             }
 
-        } catch (error: unknown) {
-            console.error("Error procesando archivo:", error);
-            const message = error instanceof Error ? error.message : String(error); // Safe error message access
-            toast.error("Error al procesar archivo", { id: toastId, description: message });
-
-        } finally {
-            setIsSubmitting(false); // End processing indicator
-            // Reset file input to allow uploading the same file again
-            if (event.target) event.target.value = "";
-        }
-    };
+            } catch (error: unknown) {
+                console.error("Error procesando archivo:", error);
+                const message = error instanceof Error ? error.message : String(error); // Safe error message access
+                toast.error("Error al procesar archivo", { id: toastId, description: message });
+            } finally {
+                setIsSubmitting(false);
+            }
+        };
 
     // --- Download Functions ---
     // PDF Download using MANUAL jsPDF text/drawing
@@ -1300,6 +1476,14 @@ const ContractLibrary = () => { // <--- Inicio del componente
 
         setIsSubmitting(true);
         try {
+            // Make sure editingClient still exists in this scope
+            if (!editingClient) {
+                throw new Error("Cliente no encontrado para actualizar");
+            }
+            
+            // Capture editingClient.id in a local const to ensure it's in scope for the mapping function
+            const editingClientId = editingClient.id;
+            
             // Send *only* the changed fields (payload = editedClientData)
             const payload = editedClientData;
             const res = await fetch(`/api/clients/${editingClient.id}`, {
@@ -1311,11 +1495,11 @@ const ContractLibrary = () => { // <--- Inicio del componente
             if (!res.ok) {
                 throw new Error(updatedData.error || `Error del servidor (${res.status})`);
             }
-
+    
             // Process the full updated object returned by the API
             const updatedClient = createClientObject(updatedData);
             setClients((prev) =>
-                prev.map((c) => (c.id === editingClient.id ? updatedClient : c))
+                prev.map((c) => (c.id === editingClientId ? updatedClient : c))
                    .sort((a, b) => (a.FullName || '').localeCompare(b.FullName || ''))
             );
             toast.success("Cliente Actualizado", { description: `"${updatedClient.name}" actualizado.` });
@@ -1633,7 +1817,7 @@ const ContractLibrary = () => { // <--- Inicio del componente
             };
 
             // Save the generated template using the existing API endpoint
-             const savedTemplate = await createTemplateFromData(genTplData); // Reuse logic slightly adapted
+              const savedTemplate = await createTemplateFromData(genTplData); // Reuse logic slightly adapted
 
             if (savedTemplate) {
                  toast.success("Contrato IA Generado", { id: toastId, description: "Plantilla añadida. ¡Revísala y edítala!" });
@@ -1643,9 +1827,9 @@ const ContractLibrary = () => { // <--- Inicio del componente
                   if (document.getElementById(String(toastId))) toast.dismiss(toastId); // Dismiss if not already handled
             }
 
-        } catch (error: unknown) {
+            } catch (error: unknown) {
             console.error("AI generation or saving error:", error);
-            const message = error instanceof Error ? error.message : String(error); // Safe error message access
+              const message = error instanceof Error ? error.message : String(error); // Safe error message access
             toast.error("Error IA", { id: toastId, description: message || "No se pudo generar o guardar la plantilla." });
         } finally {
             setIsGeneratingTemplate(false);
@@ -1694,118 +1878,101 @@ const ContractLibrary = () => { // <--- Inicio del componente
 
     // --- Send Contract ---
     const handleSendContract = async () => {
-        // 1. Validate Prerequisites (Keep existing validations)
-        if (!selectedContract) { toast.error("Selecciona Contrato", { description: "Primero elige una plantilla." }); return; }
-        if (selectedParticipants.length === 0) { toast.error("Faltan Participantes", { description: "Añade al menos un participante." }); return; }
-        if (Math.abs(totalPercentage - 100) > 0.01) { toast.error("Error Porcentajes", { description: `La suma es ${totalPercentage.toFixed(2)}%, debe ser exactamente 100%.` }); return; }
-        if (!isGeneralDataComplete) { toast.error("Faltan Datos Generales", { description: "Completa Jurisdicción, Fecha y Título del Track (*)." }); return; }
+        console.log("--- handleSendContract START ---");
+        // ... (validaciones existentes: selectedContract, participants, percentage, generalData) ...
 
-        // 2. Get the *current* content from the editor (could be original, edited, or AI-finalized)
-        const finalContent = editorRef.current?.innerHTML || editedContent || selectedContract.content || ""; // Prioritize live editor content
-        const remainingPlaceholders = finalContent.match(/\[[^\]]+\]/g);
-
-        // Check for remaining placeholders (keep existing logic)
-        if (remainingPlaceholders?.length) {
-            const critical = ['[Jurisdiccion]', '[Fecha]', '[trackTitle]', '[FullName]', '[Email]', '[Firma]', '[Percentage]', '[Porcentaje', '[Address]', '[Passport]'];
-            const criticalRemaining = remainingPlaceholders.filter(p =>
-                 critical.some(crit => p.toLowerCase().includes(crit.toLowerCase().replace('[','').replace(']','')))
-             );
-
-            if (criticalRemaining.length > 0) {
-                 toast.error("Placeholders Críticos Pendientes", {
-                     description: `Por favor, completa o elimina: ${criticalRemaining.slice(0, 3).join(", ")}${criticalRemaining.length > 3 ? '...' : ''}`,
-                     duration: 5000,
-                 });
+        // --- RECALCULAR Y LOGUEAR finalContent ---
+        let currentFinalContent = "";
+        try {
+            currentFinalContent = applyAllDataToContent(); // Llama a la función que genera el contenido
+            console.log(">>> [handleSendContract] Final Content JUST BEFORE SEND:", currentFinalContent);
+            if (!currentFinalContent || !currentFinalContent.trim()) {
+                 toast.error("Error Interno", { description: "El contenido final del contrato está vacío. Intenta actualizar." });
+                 console.error(">>> [handleSendContract] ABORTING: Final content is empty.");
+                 return; // No continuar si está vacío
+            }
+            // Opcional: Re-validar placeholders aquí si es necesario
+            if (hasRemainingPlaceholders()) { // La función internamente llama a applyAllDataToContent()
+                 toast.error("Error Interno", { description: "Aún quedan placeholders críticos. Intenta actualizar." });
+                 console.error(">>> [handleSendContract] ABORTING: Critical placeholders remain in final content.");
                  return;
-             } else {
-                 toast.warning("Placeholders Restantes Detectados", {
-                     description: `El contrato aún contiene: ${remainingPlaceholders.slice(0, 3).join(", ")}${remainingPlaceholders.length > 3 ? '...' : ''}. ¿Continuar?`,
-                     duration: 6000,
-                     // action: { label: "Continuar", onClick: () => proceedWithSend(finalContent) } // Optional confirm button
-                 });
-                 // Proceed automatically after warning for now.
-             }
-        }
+            }
 
-        // 3. Proceed with sending
-        proceedWithSend(finalContent);
+        } catch (error) {
+            console.error(">>> [handleSendContract] Error generating final content:", error);
+            toast.error("Error Interno", { description: "No se pudo generar el contenido final para enviar." });
+            return;
+        }
+        // --- FIN RECALCULAR Y LOGUEAR ---
+
+        // Llamar a proceedWithSend con el contenido recién calculado
+        await proceedWithSend(currentFinalContent);
+
+        console.log("--- handleSendContract END ---");
     };
 
     // Actual sending logic, separated for potential confirmation flow
     const proceedWithSend = async (finalContent: string) => {
-         if (!selectedContract) return; // Should not happen if called from handleSendContract
-
+         if (!selectedContract) {
+             toast.error("Selecciona Contrato", { description: "No se puede enviar sin una plantilla seleccionada." });
+             return;
+         } // Early return if no contract selected
          setIsSending(true);
          setError(null);
          console.log(">>> Iniciando envío de contrato...");
-
+     
+         // --- AÑADIR ESTE LOG DETALLADO ---
+         const payload = {
+             templateId: selectedContract.id,
+             title: selectedContract.title,
+             contractTitle: generalData.trackTitle || selectedContract.title,
+             // --- USA EL CONTENIDO PASADO COMO ARGUMENTO ---
+             finalHtmlContent: finalContent, // Usa el argumento 'finalContent'
+             // --- FIN ---
+             participants: selectedParticipants.map(email => {
+                 const client = clients.find(c => c.email === email);
+                 return {
+                     email: email,
+                     name: client?.FullName || client?.name || email,
+                     role: client?.role || 'Participante',
+                     // Incluye otros datos si el backend los necesita para crear Firmantes
+                     clientId: client?.id
+                 };
+             }),
+             generalData: generalData,
+             percentages: participantPercentages // Enviar porcentajes también
+         };
+         console.log(">>> Payload being sent to /api/contracts/send-finalized:", JSON.stringify(payload, null, 2));
+         // --- FIN DEL LOG ---
+     
          try {
-             const payload = {
-                 templateId: selectedContract.id,
-                 templateTitle: selectedContract.title,
-                 finalHtmlContent: finalContent, // Send the final generated HTML
-                 participants: selectedParticipants.map(email => {
-                     const c = clients.find(cl => cl.email === email);
-                     return {
-                         email: email,
-                         name: c?.FullName || c?.name || email, // Use best available name
-                         role: c?.role || 'Participante',
-                         percentage: participantPercentages[email] ?? 0 // Ensure percentage exists
-                         // Add client ID if your backend needs it: clientId: c?.id
-                     };
-                 }),
-                 generalData: generalData, // Send general data fields
-             };
-             console.log(">>> Payload para /api/contracts/send-finalized:", payload);
-
-             // --- Actual API Call ---
-             const res = await fetch('/api/contracts/send-finalized', { // Ensure endpoint is correct
+             const res = await fetch('/api/contracts/send-finalized', {
                  method: 'POST',
                  headers: { 'Content-Type': 'application/json' },
-                 body: JSON.stringify(payload)
+                 body: JSON.stringify(payload) // Enviar el payload construido
              });
-             const result = await res.json(); // Expecting { success: boolean, message?: string, sentContract?: SentContract, error?: string }
-             // --- End API Call ---
-
-             if (!res.ok || !result.success) {
-                 throw new Error(result.error || `Error del servidor (${res.status})`);
+             
+             if (!res.ok) {
+                 const errorData = await res.json().catch(() => ({}));
+                 throw new Error(errorData.error || `Error del servidor (${res.status})`);
              }
-
-             // Update local state with the sent contract data from the response
-             if (result.sentContract) {
-                 const newSentContract : SentContract = { // Ensure typing matches
-                    id: result.sentContract.id || `sent-${Date.now()}`,
-                    title: result.sentContract.title || selectedContract.title,
-                    content: finalContent, // Use the content that was actually sent
-                    participants: payload.participants, // Use the participant list sent
-                    date: result.sentContract.date || new Date().toISOString(),
-                    status: result.sentContract.status || "Enviado",
-                    notionPageId: result.sentContract.notionPageId // Capture if returned
-                 };
-                  setSentContracts((prev) => [newSentContract, ...prev].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-             } else {
-                 // Fallback if API doesn't return full object (less ideal)
-                 console.warn("API did not return full sent contract object, using local data.");
-                 const fallbackSentData: SentContract = {
-                    id: `sent-${Date.now()}`, title: selectedContract.title, content: finalContent,
-                    participants: payload.participants, date: new Date().toISOString(), status: "Enviado"
-                 };
-                  setSentContracts((prev) => [fallbackSentData, ...prev].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-             }
-
-             toast.success("¡Contrato Enviado!", { description: result.message || `"${selectedContract.title}" enviado correctamente.` });
-             resetProcess(); // Go back to library view after successful send
-
-         } catch (err: unknown) {
-             const message = err instanceof Error ? err.message : String(err); // Safe error message access
-             setError(`Error al enviar: ${message}`);
-             toast.error("Error al Enviar Contrato", { description: message });
-             console.error(">>> Send Error:", err);
+             
+             const responseData = await res.json();
+             console.log(">>> Contrato enviado con éxito:", responseData);
+             toast.success("Contrato Enviado", { description: "Se ha enviado el contrato a todos los participantes." });
+             
+             // Actualizar el estado local con el nuevo contrato enviado
+             setSentContracts(prev => [responseData, ...prev]);
+             setStep(3); // Avanzar al siguiente paso
+         } catch (error: unknown) {
+             console.error("Error enviando contrato:", error);
+             const message = error instanceof Error ? error.message : String(error);
+             toast.error("Error al enviar contrato", { description: message });
+             setError(message);
          } finally {
              setIsSending(false);
          }
      };
-
 
     // --- Effects ---
     // Click outside sidebars to close them
@@ -1815,7 +1982,6 @@ const ContractLibrary = () => { // <--- Inicio del componente
 
             // Close Add Client Sidebar
             if (showAddClientSidebar && addClientSidebarRef.current && !addClientSidebarRef.current.contains(target)) {
-                // Check if the click target is NOT the button that opens the sidebar
                 const openButton = document.querySelector('button[aria-label="Añadir Cliente"]');
                 if (!openButton || !openButton.contains(target)) {
                     setShowAddClientSidebar(false);
@@ -1824,18 +1990,29 @@ const ContractLibrary = () => { // <--- Inicio del componente
 
             // Close Edit Client Sidebar
             if (showEditClientSidebar && editClientSidebarRef.current && !editClientSidebarRef.current.contains(target)) {
-                 // Check if click was on an Edit button that might reopen it immediately
                 const isEditButton = (target as HTMLElement).closest('button[aria-label^="Editar"]');
-                 if (!isEditButton) {
+                if (!isEditButton) {
                     setShowEditClientSidebar(false);
-                    setEditingClient(null); // Clear editing state when closing via outside click
-                     setEditedClientData({});
-                 }
+                    setEditingClient(null);
+                    setEditedClientData({});
+                }
             }
         }
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, [showAddClientSidebar, showEditClientSidebar]); // Dependencies ensure listener updates if state changes
+
+        // --- CORRECCIÓN: Registrar el event listener ---
+        document.addEventListener("mousedown", handleClickOutside);
+
+        // --- CORRECCIÓN: Función de limpieza ---
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+        // Las dependencias están bien si solo dependen de si los sidebars están abiertos
+        // y de las referencias, aunque las referencias (addClientSidebarRef, editClientSidebarRef)
+        // son estables y no necesitan estar en el array.
+        // Si las funciones `setShow...`, `setEditingClient`, `setEditedClientData`
+        // no están envueltas en useCallback, técnicamente deberían estar aquí,
+        // pero en la práctica, los setters de useState son estables.
+    }, [showAddClientSidebar, showEditClientSidebar]); // Mantener dependencias mínimas
 
     // Sync editing client data when 'editingClient' changes
     useEffect(() => {
@@ -1972,6 +2149,48 @@ const ContractLibrary = () => { // <--- Inicio del componente
         };
     }, [updateToolbarState, step]); // Re-run if updateToolbarState logic changes or step changes
 
+    // --- Form Handlers ---
+    const handleClientFormChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+        const { name, value } = e.target;
+        if (showAddClientSidebar) {
+            setNewClient(prev => ({ ...prev, [name]: value }));
+        } else if (showEditClientSidebar && editingClient) {
+            setEditedClientData(prev => ({ ...prev, [name]: value }));
+        }
+    };
+
+    // Esta función ya está definida más arriba en el componente
+    // const handleTemplateFormChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    //     const { name, value } = e.target;
+    //     if (showCreateTemplateModal) {
+    //         setNewTemplate(prev => ({ ...prev, [name]: value }));
+    //     } else if (showEditTemplateModal && templateToEdit) {
+    //         setTemplateToEdit(prev => prev ? { ...prev, [name]: value } : null);
+    //     }
+    // };
+
+
+        // Efecto para actualizar el editor cuando cambian los participantes
+    useEffect(() => {
+        if (step === 2 && editorRef.current && selectedContract) {
+            // Ejecutar después del renderizado para evitar conflictos
+            const timer = setTimeout(() => {
+                try {
+                    const updatedContent = applyAllDataToContent();
+                    // Verificar que editorRef.current sigue existiendo en el momento de la ejecución
+                    if (editorRef.current) {
+                        editorRef.current.innerHTML = updatedContent;
+                        setEditedContent(updatedContent);
+                        console.log("Contenido actualizado automáticamente tras cambio de participantes");
+                    }
+                } catch (error) {
+                    console.error("Error actualizando contenido:", error);
+                }
+            }, 100);
+            
+            return () => clearTimeout(timer);
+        }
+    }, [selectedParticipants, generalData, applyAllDataToContent, step, selectedContract]);
 
     // --- RENDER ---
     // Initial Loading State
@@ -1983,7 +2202,7 @@ const ContractLibrary = () => { // <--- Inicio del componente
         return <div className="flex flex-col justify-center items-center min-h-screen text-red-600 p-4 text-center">
             <AlertTriangle size={40} className="mb-4 text-red-500"/>
             <p className="font-semibold text-lg text-red-700">Error al Cargar Datos</p>
-            <p className="text-sm text-red-600 my-2 max-w-md">{error}</p>
+            <p className="text-sm text-red-600 my-2 max-w-md">{error ? String(error) : ''}</p>
             <Button onClick={() => window.location.reload()} variant="destructive" size="sm" className="mt-4">
                 Reintentar Conexión
             </Button>
@@ -1998,34 +2217,40 @@ const ContractLibrary = () => { // <--- Inicio del componente
 
             {/* Header Navigation */}
             <header className="mb-4 pb-4 border-b border-gray-300 sticky top-0 bg-gray-100 z-30">
-                <nav className="flex flex-wrap gap-1 sm:gap-2 text-sm justify-center md:justify-start items-center">
-                     {/* Back Button (only visible when not in library/CRM home) */}
-                     {(step !== 0 || crmMode) && (
-                         <Button size="sm" variant="ghost" onClick={goToHome} className="mr-auto md:mr-2">
-                             <ArrowLeft size={14} className="mr-1" /> Volver
-                         </Button>
-                     )}
-                     {/* Main Navigation Buttons */}
-                    <Button size="sm" variant={!crmMode && step === 0 ? 'secondary' : 'ghost'} onClick={() => { setCrmMode(false); goToHome(); }} aria-current={!crmMode && step === 0 ? "page" : undefined}> <Library size={14} className="mr-1" /> Biblioteca </Button>
-                    <Button size="sm" variant={!crmMode && step === 1 ? 'secondary' : 'ghost'} onClick={() => { if (selectedContract) setStep(1); }} disabled={!selectedContract} aria-current={!crmMode && step === 1 ? "page" : undefined}> <Eye size={14} className="mr-1" /> Preview </Button>
-                    <Button size="sm" variant={!crmMode && step === 2 ? 'secondary' : 'ghost'} onClick={() => { if (selectedContract) setStep(2); }} disabled={!selectedContract} aria-current={!crmMode && step === 2 ? "page" : undefined}> <Edit2 size={14} className="mr-1" /> Editor </Button>
-                    <Button size="sm" variant={!crmMode && step === 3 ? 'secondary' : 'ghost'} onClick={() => { setCrmMode(false); setStep(3); }} aria-current={!crmMode && step === 3 ? "page" : undefined}> <Send size={14} className="mr-1" /> Enviados </Button>
-                    {/* <Button size="sm" variant={!crmMode && step === 5 ? 'secondary' : 'ghost'} onClick={() => { setCrmMode(false); setStep(5); }} aria-current={!crmMode && step === 5 ? "page" : undefined}> <CheckCircle size={14} className="mr-1" /> Firmados </Button> */}
-                    <Button size="sm" variant={crmMode ? 'secondary' : 'ghost'} onClick={() => { resetProcess(); setCrmMode(true); setStep(4); }} aria-current={crmMode ? "page" : undefined}> <Users size={14} className="mr-1" /> CRM </Button>
-                </nav>
-                 {/* Display non-critical loading/submitting state */}
-                 {(isSubmitting || isSending || isGeneratingTemplate || isFinalizingWithAI) && !isLoading && ( // Added isFinalizingWithAI here
-                     <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 mb-[-10px] text-xs text-indigo-600 flex items-center">
-                         <Loader2 className="h-3 w-3 mr-1 animate-spin"/> Procesando...
-                     </div>
-                 )}
+            <nav className="flex flex-wrap gap-1 sm:gap-2 text-sm justify-center md:justify-start items-center">
+     {/* Botón Volver (solo visible cuando no estás en la biblioteca principal) */}
+     {(step !== 0) && ( // <--- CONDICIÓN SIMPLIFICADA
+         <Button size="sm" variant="ghost" onClick={goToHome} className="mr-auto md:mr-2">
+             <ArrowLeft size={14} className="mr-1" /> Volver
+         </Button>
+     )}
+     {/* Botones Principales de Navegación */}
+    <Button
+        size="sm"
+        variant={step === 0 ? 'secondary' : 'ghost'} // <--- CONDICIÓN SIMPLIFICADA
+        onClick={goToHome}                            // <--- ACCIÓN SIMPLIFICADA
+        aria-current={step === 0 ? "page" : undefined} // <--- CONDICIÓN SIMPLIFICADA
+    >
+        <Library size={14} className="mr-1" /> Biblioteca
+    </Button>
+    {/* El botón Preview ha sido eliminado */}
+    <Button
+        size="sm"
+        variant={step === 2 ? 'secondary' : 'ghost'} // <--- CONDICIÓN SIMPLIFICADA
+        onClick={() => { if (selectedContract) setStep(2); }}
+        disabled={!selectedContract}
+        aria-current={step === 2 ? "page" : undefined} // <--- CONDICIÓN SIMPLIFICADA
+    >
+        <Edit2 size={14} className="mr-1" /> Editor
+    </Button>
+            </nav>
             </header>
 
             {/* Main Content Area */}
-            <main className="flex-grow relative">
+            <main className="flex-grow flex flex-col min-h-0"> {/* Added flex-grow and min-h-0 */}
                 <AnimatePresence mode="wait">
                     {/* --- Step 0: Library View --- */}
-                    {step === 0 && !crmMode && (
+                    {step === 0 && (
                         <motion.div key="library" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.3 }}>
                              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
                                 <h2 className="text-xl md:text-2xl font-semibold text-gray-800">Plantillas de Contratos</h2>
@@ -2053,604 +2278,428 @@ const ContractLibrary = () => { // <--- Inicio del componente
                              ) : filteredTemplates.length === 0 ? (
                                  <p className="text-center text-gray-500 mt-10">No se encontraron plantillas para "{templateSearchQuery}".</p>
                              ) : (
-                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-5">
-                                    {filteredTemplates.map((template) => (
-                                        <Card key={template.id} className="bg-white rounded-lg hover:shadow-lg transition duration-200 border shadow-sm overflow-hidden flex flex-col group">
-                                            {/* Clickable Area */}
-                                            <div onClick={() => {
-                                                    if(isSubmitting || isSending || isFinalizingWithAI) return; // Prevent action during submission/sending/AI
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-5">
+                                {filteredTemplates.map((template) => (
+                                    <Card key={template.id} className="bg-white rounded-lg hover:shadow-lg transition duration-200 border shadow-sm overflow-hidden flex flex-col group">
+                                        {/* Área Clickeable */}
+                                        <div
+                                            onClick={() => {
+                                                if (!isSubmitting) {
                                                     setSelectedContract(template);
-                                                    setEditedContent(template.content || ""); // Set initial content for preview/editor
-                                                    // Reset dynamic data for the new contract
+                                                    setEditedContent(template.content); // Reset edited content
+                                                    setStep(2); // Go to editor
+                                                    // Reset sidebar states for the new contract
                                                     setSelectedParticipants([]);
                                                     setParticipantPercentages({});
-                                                    setGeneralData({ jurisdiction: "", fecha: "", trackTitle: "", lugarDeFirma: "", areaArtistica: "", duracionContrato: "", periodoAviso: "" }); // Reset ALL general data
-                                                    setSearchQuery(""); // Reset participant search
-                                                    setStep(1); // Go to Preview step
-                                                }}
-                                                className="cursor-pointer flex-grow flex flex-col"
-                                                aria-label={`Seleccionar plantilla: ${template.title}`}
-                                                role="button"
-                                                tabIndex={0}
-                                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.currentTarget.click(); }}}
-                                            >
-                                                {/* Placeholder Image */}
-                                                <div className="w-full h-32 bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center text-gray-400 group-hover:from-indigo-100 group-hover:to-indigo-200 group-hover:text-indigo-400 transition-colors">
-                                                    <Library size={40} strokeWidth={1.5} />
-                                                </div>
-                                                {/* Card Header */}
-                                                <CardHeader className="p-4 pb-2 flex-shrink-0">
-                                                    <CardTitle className="text-md font-semibold mb-1 line-clamp-2" title={template.title}>
-                                                        {template.title}
-                                                    </CardTitle>
-                                                    <p className="text-xs px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded-full font-medium inline-block truncate max-w-full" title={template.category}>
-                                                        {getShortCategory(template.category)}
-                                                    </p>
-                                                </CardHeader>
-                                                {/* Card Content (Description) */}
-                                                <CardContent className="p-4 pt-0 text-sm text-gray-600 line-clamp-3 flex-grow">
-                                                    {template.description || <span className="italic text-gray-400">Sin descripción.</span>}
-                                                </CardContent>
+                                                    setGeneralData(INITIAL_GENERAL_DATA); // Reset general data
+                                                    // Attempt extraction for the newly selected template
+                                                    extractGeneralData(template.content);
+                                                }
+                                            }}
+                                            className="cursor-pointer flex-grow flex flex-col"
+                                            aria-label={`Seleccionar plantilla: ${template.title}`}
+                                            role="button"
+                                            tabIndex={0}
+                                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.currentTarget.click(); }}}
+                                        >
+                                            {/* Imagen Placeholder */}
+                                            <div className="w-full h-32 bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center text-gray-400 group-hover:from-indigo-100 group-hover:to-indigo-200 group-hover:text-indigo-400 transition-colors">
+                                                <Library size={40} strokeWidth={1.5} />
                                             </div>
-                                            {/* Card Footer (Actions) */}
-                                            <CardFooter className="p-3 pt-2 border-t bg-gray-50 flex justify-end items-center gap-1 flex-shrink-0">
-                                                 {/* Edit Button */}
-                                                <Button
-                                                    size="icon" variant="ghost"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation(); // Prevent triggering card click
-                                                        if(!isSubmitting) {
-                                                            setTemplateToEdit(template); // Set the template to edit
-                                                            setShowEditTemplateModal(true); // Open the modal
-                                                        }
-                                                    }}
-                                                    className="h-7 w-7 text-gray-600 hover:text-indigo-600 hover:bg-indigo-100"
-                                                    aria-label={`Editar plantilla ${template.title}`}
-                                                    disabled={isSubmitting}
-                                                >
-                                                    <Edit size={14} />
-                                                </Button>
-                                                {/* Delete Button */}
-                                                <Button
-                                                    size="icon" variant="ghost"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        if (!isSubmitting) {
-                                                            requestDeleteTemplate(template); // Open confirmation dialog
-                                                        }
-                                                    }}
-                                                    className="h-7 w-7 text-red-600 hover:text-red-800 hover:bg-red-100"
-                                                    aria-label={`Eliminar plantilla ${template.title}`}
-                                                    disabled={isSubmitting}
-                                                >
-                                                    <Trash2 size={14} />
-                                                </Button>
-                                            </CardFooter>
-                                        </Card>
-                                    ))}
-                                </div>
-                             )}
-                        </motion.div>
-                    )}
-
-                    {/* --- Step 1: Preview View --- */}
-                     {step === 1 && selectedContract && (
-                         <motion.div
-                             key="preview"
-                             initial={{ opacity: 0, y: 10 }}
-                             animate={{ opacity: 1, y: 0 }}
-                             exit={{ opacity: 0, y: -10 }}
-                             transition={{ duration: 0.3 }}
-                             className="max-w-4xl mx-auto" // Center content
-                         >
-                             <Card className="bg-white p-4 md:p-6 rounded-xl border shadow-md flex flex-col">
-                                 {/* Header */}
-                                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 border-b pb-4 gap-3 flex-shrink-0">
-                                     <h2 className="text-xl font-semibold text-gray-800 flex-1 truncate" title={selectedContract.title}>
-                                         Vista Previa: {selectedContract.title}
-                                     </h2>
-                                     <div className="flex gap-2 w-full sm:w-auto">
-                                         <Button size="sm" variant="outline" onClick={goToHome} className="flex-1 sm:flex-none">
-                                             <Library size={14} className="mr-1" /> Biblioteca
-                                         </Button>
-                                         <Button size="sm" onClick={() => setStep(2)} className="flex-1 sm:flex-none bg-indigo-600 hover:bg-indigo-700 text-white">
-                                             Ir al Editor <Edit2 size={14} className="ml-1" />
-                                         </Button>
-                                     </div>
-                                 </div>
-
-                                 {/* Content Area */}
-                                  {/* Use ScrollArea for potentially long content, set max height */}
-                                 <ScrollArea className="flex-grow w-full border rounded-md max-h-[70vh]">
-                                     <div
-                                         className="prose prose-sm max-w-none bg-gray-50 p-4 md:p-6 min-h-full" // Use prose for basic HTML styling
-                                         dangerouslySetInnerHTML={{ __html: applyAllDataToContent() || "<p class='text-gray-400 italic'>Contenido no disponible o vacío.</p>" }}
-                                     />
-                                 </ScrollArea>
-
-                                 {/* Footer Actions (Optional: Add download buttons here too) */}
-                                 <CardFooter className="p-3 pt-3 border-t flex justify-end gap-2 mt-4">
-                                     <Button
-                                        variant="secondary"
-                                        size="sm"
-                                        onClick={() => handleDownload("pdf")}
-                                        disabled={isSubmitting || (!editedContent && !selectedContract?.content)}
-                                      >
-                                          <Download size={16} className="mr-1" /> PDF
-                                      </Button>
-                                      <Button
-                                        variant="secondary"
-                                        size="sm"
-                                        onClick={() => handleDownload("word")}
-                                        disabled={isSubmitting || (!editedContent && !selectedContract?.content)}
-                                      >
-                                          <Download size={16} className="mr-1" /> Word
-                                      </Button>
-                                 </CardFooter>
-                             </Card>
-                         </motion.div>
-                     )}
-
-                    {/* --- Step 2: Editor View --- */}
-                    {step === 2 && selectedContract && (
-                      <motion.div
-                         key="editor"
-                         initial={{ opacity: 0, y: 10 }}
-                         animate={{ opacity: 1, y: 0 }}
-                         exit={{ opacity: 0, y: -10 }}
-                         transition={{ duration: 0.3 }}
-                         className="flex flex-col md:flex-row gap-4 lg:gap-6 h-full"
-                       >
-                         {/* ------------ Left Column: Editor ------------ */}
-                         <div className="flex flex-col flex-grow md:w-2/3 lg:w-3/4 h-full">
-                           <Card className="bg-white rounded-xl border shadow-md flex flex-col flex-grow overflow-hidden">
-                             {/* Editor Header */}
-                             <div className="p-3 border-b flex flex-col sm:flex-row justify-between items-center flex-shrink-0 bg-gray-50 rounded-t-xl">
-                               <h2 className="text-lg font-semibold text-gray-700 truncate mb-2 sm:mb-0" title={selectedContract.title}>
-                                 Editando: {selectedContract.title}
-                               </h2>
-                               <div className="flex items-center gap-1 flex-wrap">
-                                 <Button size="sm" variant="ghost" onClick={() => setStep(1)} title="Volver a Vista Previa">
-                                   <ArrowLeft size={14} className="mr-1" /> Preview
-                                 </Button>
-                                 <Button size="sm" variant="ghost" onClick={goToHome} title="Volver a la Biblioteca">
-                                   <Library size={14} className="mr-1" /> Biblioteca
-                                 </Button>
-                               </div>
-                             </div>
-
-                             {/* Fixed Toolbar */}
-                             <EditorToolbar
-                               onCommand={execCmd}
-                               onFormatCode={formatAsCode}
-                               onInsertBlockquote={insertBlockquote}
-                               onTriggerImageUpload={triggerImageUpload}
-                               onFontSizeChange={handleFontSizeChange}
-                             />
-
-                             {/* Editable Area with Scroll */}
-                             <ScrollArea className="flex-grow min-h-0 w-full border-t focus-within:ring-1 focus-within:ring-indigo-500 relative bg-white">
-                               {/* Floating Toolbar */}
-                               <AnimatePresence>
-                                 {showFormattingToolbar && toolbarPosition && (
-                                   <motion.div
-                                     ref={toolbarRef}
-                                     key="floating-toolbar"
-                                     initial={{ opacity: 0, scale: 0.9, y: -5 }}
-                                     animate={{ opacity: 1, scale: 1, y: 0 }}
-                                     exit={{ opacity: 0, scale: 0.9, y: -5 }}
-                                     transition={{ duration: 0.1, ease: "easeOut" }}
-                                     className="absolute bg-gray-800 text-white rounded-lg shadow-xl px-2 py-1 flex items-center gap-0.5 z-50"
-                                     style={{
-                                       top: `${toolbarPosition.top}px`,
-                                       left: `${toolbarPosition.left}px`,
-                                     }}
-                                     onMouseDown={(e) => e.preventDefault()} // Prevent editor losing focus when clicking toolbar
-                                   >
-                                      {/* Toolbar Buttons (Simplified) */}
-                                     <Button variant="ghost" size="icon" className="h-7 w-7 text-white hover:bg-gray-700" title="Negrita" onClick={() => execCmd("bold")}><Bold size={16} /></Button>
-                                     <Button variant="ghost" size="icon" className="h-7 w-7 text-white hover:bg-gray-700" title="Cursiva" onClick={() => execCmd("italic")}><Italic size={16} /></Button>
-                                     <Button variant="ghost" size="icon" className="h-7 w-7 text-white hover:bg-gray-700" title="Subrayado" onClick={() => execCmd("underline")}><Underline size={16} /></Button>
-                                     <Button variant="ghost" size="icon" className="h-7 w-7 text-white hover:bg-gray-700" title="Tachado" onClick={() => execCmd("strikeThrough")}><Strikethrough size={16} /></Button>
-                                   </motion.div>
-                                 )}
-                               </AnimatePresence>
-
-                               {/* Editor Div */}
-                               <div
-                                 ref={editorRef}
-                                 contentEditable
-                                 dangerouslySetInnerHTML={{ __html: editedContent || selectedContract.content }}
-                                 onInput={(e: React.SyntheticEvent<HTMLDivElement>) => {
-                                     const currentContent = (e.target as HTMLDivElement).innerHTML;
-                                     if (editorRef.current && currentContent !== editedContent) {
-                                         setEditedContent(currentContent);
-                                     }
-                                 }}
-                                 onBlur={(e: React.FocusEvent<HTMLDivElement>) => {
-                                      const currentContent = e.target.innerHTML;
-                                      if (editorRef.current && currentContent !== editedContent) {
-                                          setEditedContent(currentContent);
-                                      }
-                                      requestAnimationFrame(updateToolbarState);
-                                 }}
-                                 onFocus={updateToolbarState} // Update toolbar on focus
-                                 onKeyDown={(e) => {
-                                     if (e.key === "Enter" && !e.shiftKey) {
-                                        e.preventDefault();
-                                        document.execCommand("insertParagraph", false);
-                                     }
-                                 }}
-                                 className="prose prose-sm max-w-none w-full p-4 focus:outline-none whitespace-pre-wrap break-words min-h-full"
-                                 style={{ wordBreak: "break-word", overflowWrap: "break-word", hyphens: "auto" }}
-                                 suppressContentEditableWarning // Suppress React warning about managing contenteditable
-                                 aria-label="Editor de contenido del contrato"
-                                 role="textbox"
-                                 aria-multiline="true"
-                               />
-                             </ScrollArea>
-
-                             {/* ------------ Editor Footer (UPDATED BUTTONS) ------------ */}
-                              <CardFooter className="flex flex-col sm:flex-row justify-between items-center gap-3 p-3 border-t bg-gray-50 flex-shrink-0">
-                                  {/* Download Buttons */}
-                                  <div className="flex gap-2 w-full sm:w-auto justify-start">
-                                      <Button
-                                          variant="secondary"
-                                          size="sm"
-                                          onClick={() => handleDownload("pdf")}
-                                          disabled={isSubmitting || isSending || isFinalizingWithAI || !editorRef.current?.innerHTML?.trim()}
-                                      >
-                                          <Download size={16} className="mr-1" /> PDF
-                                      </Button>
-                                      <Button
-                                          variant="secondary"
-                                          size="sm"
-                                          onClick={() => handleDownload("word")}
-                                          disabled={isSubmitting || isSending || isFinalizingWithAI || !editorRef.current?.innerHTML?.trim()}
-                                      >
-                                          <Download size={16} className="mr-1" /> Word
-                                      </Button>
-                                  </div>
-
-                                  {/* --- Action Buttons --- */}
-                                  <div className="flex gap-2 w-full sm:w-auto justify-end">
-                                      {/* --- FINALIZAR CON IA --- */}
-                                      <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={handleFinalizeWithAI}
-                                        disabled={
-                                          !selectedContract ||
-                                          selectedParticipants.length === 0 ||
-                                          Math.abs(totalPercentage - 100) >= 0.01 ||
-                                          !isGeneralDataComplete ||
-                                          isSubmitting || isSending || isFinalizingWithAI
-                                        }
-                                        className="border-purple-500 text-purple-700 hover:bg-purple-50"
-                                      >
-                                        {isFinalizingWithAI
-                                          ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                          : <Sparkles className="mr-1 text-yellow-500" size={16} />}
-                                        Finalizar con IA
-                                      </Button>
-
-                                      {/* --- ENVIAR --- */}
-                                      <Button
-                                        onClick={handleSendContract}
-                                        disabled={
-                                            !isEditorReadyToSend ||
-                                            isSubmitting || isSending || isFinalizingWithAI
-                                        }
-                                        className={`bg-green-600 hover:bg-green-700 text-white ${
-                                            (!isEditorReadyToSend || isSending || isSubmitting || isFinalizingWithAI) ? "opacity-50 cursor-not-allowed" : ""
-                                        }`}
-                                        aria-live="polite"
-                                      >
-                                        {isSending
-                                          ? <> <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Enviando… </>
-                                          : <> <Send className="mr-1" size={16} /> Enviar Contrato Finalizado </>
-                                        }
-                                      </Button>
-                                  </div>
-                              </CardFooter>
-                           </Card>
-                         </div> {/* End Left Column */}
-
-                         {/* ------------ Right Column: Sidebar ------------ */}
-                         <div className="w-full md:w-1/3 lg:w-1/4 flex flex-col h-full flex-shrink-0">
-                           <Card className="bg-white rounded-xl border shadow-md flex flex-col flex-grow overflow-hidden">
-                             {/* Sidebar Scroll Area */}
-                             <ScrollArea className="flex-grow min-h-0">
-                               <div className="p-4 space-y-6">
-
-                                 {/* ---------- Participants Section ---------- */}
-                                 <section aria-labelledby="participants-heading">
-                                    <h3 id="participants-heading" className="text-md font-semibold mb-3 flex items-center text-gray-700">
-                                        <Users size={18} className="mr-2 text-indigo-600" /> Participantes
-                                    </h3>
-                                    {/* Search Clients */}
-                                    <div className="mb-3 relative">
-                                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
-                                      <Input
-                                        type="text"
-                                        placeholder="Buscar cliente por nombre o email..."
-                                        value={searchQuery}
-                                        onChange={(e) => setSearchQuery(e.target.value)}
-                                        className="w-full pl-9 h-9 text-sm"
-                                        disabled={isLoading || isSubmitting || isSending || isFinalizingWithAI}
-                                      />
-                                    </div>
-                                    {/* Client List */}
-                                     <div className="max-h-48 overflow-y-auto border rounded-md p-2 space-y-1 bg-gray-50">
-                                     {isLoading && clients.length === 0 ? (
-                                        <p className="text-center text-xs text-gray-500 py-3"><Loader2 className="inline-block mr-1 h-3 w-3 animate-spin" />Cargando...</p>
-                                    ) : filteredClientsForParticipants.length === 0 ? (
-                                        <p className="text-center text-xs text-gray-500 py-3">
-                                        {searchQuery ? `No hay resultados para "${searchQuery}"` : clients.length === 0 ? "No hay clientes." : "No se encontraron clientes."}
-                                        </p>
-                                    ) : (
-                                        filteredClientsForParticipants.map((client) => (
-                                        <div key={client.id} className="flex items-center p-1.5 rounded hover:bg-indigo-50 text-sm transition-colors">
-                                            <input
-                                            type="checkbox"
-                                            id={`sidebar-client-select-${client.id}`}
-                                            checked={selectedParticipants.includes(client.email)}
-                                            onChange={(e) => handleCheckboxChange(e, client.email)}
-                                            className="mr-2 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                                            disabled={isSubmitting || isSending || isFinalizingWithAI}
-                                            aria-labelledby={`label-client-${client.id}`}
-                                            />
-                                            <label
-                                                htmlFor={`sidebar-client-select-${client.id}`}
-                                                id={`label-client-${client.id}`}
-                                                className="flex-1 cursor-pointer select-none"
-                                            >
-                                            <span className="font-medium block truncate" title={client.FullName || client.email}>
-                                                {client.FullName || client.email}
-                                            </span>
-                                            <span className="text-xs text-gray-500">({client.role || "Sin rol"})</span>
-                                            </label>
+                                            {/* Cabecera de la Tarjeta */}
+                                            <CardHeader className="p-4 pb-2 flex-shrink-0">
+                                                <CardTitle className="text-md font-semibold mb-1 line-clamp-2" title={template.title}>
+                                                    {template.title}
+                                                </CardTitle>
+                                                <p className="text-xs px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded-full font-medium inline-block truncate max-w-full" title={template.category}>
+                                                    {getShortCategory(template.category)}
+                                                </p>
+                                            </CardHeader>
+                                            {/* Contenido de la Tarjeta (Descripción) */}
+                                            <CardContent className="p-4 pt-0 text-sm text-gray-600 line-clamp-3 flex-grow">
+                                                {template.description || <span className="italic text-gray-400">Sin descripción.</span>}
+                                            </CardContent>
                                         </div>
-                                        ))
-                                    )}
-                                    </div>
-                                      <Button variant="outline" size="sm" className="w-full mt-2 text-xs" onClick={() => setShowAddClientSidebar(true)} disabled={isSubmitting || isSending || isFinalizingWithAI}>
-                                          <UserPlus size={14} className="mr-1"/> Añadir Nuevo Cliente
-                                      </Button>
-                                 </section>
-
-                                 <Separator />
-
-                                 {/* ---------- Percentages Section ---------- */}
-                                 {selectedParticipants.length > 0 && (
-                                    <section aria-labelledby="percentages-heading-sidebar">
-                                     <h3 id="percentages-heading-sidebar" className="text-md font-semibold mb-3 flex items-center text-gray-700">
-                                         <Percent size={18} className="mr-2 text-indigo-600" /> Porcentajes (%)
-                                     </h3>
-                                     <div className="space-y-2">
-                                     {selectedParticipants.map((email) => {
-                                         const c = clients.find((cl) => cl.email === email);
-                                         return (
-                                         <div key={email} className="flex items-center gap-2 text-sm justify-between">
-                                             <Label
-                                                 htmlFor={`sidebar-perc-${email}`}
-                                                 className="flex-1 truncate pr-2 text-xs select-none"
-                                                 title={c?.FullName || email}
-                                             >
-                                                {c?.FullName || email}
-                                             </Label>
-                                             <div className="flex items-center gap-1 w-20 flex-shrink-0">
-                                                <Input
-                                                     id={`sidebar-perc-${email}`}
-                                                     type="number"
-                                                     min="0" max="100" step="0.01" // Allow decimals
-                                                     value={participantPercentages[email] ?? ""} // Use empty string if undefined
-                                                     onChange={(e) => handlePercentageChange(email, e.target.value)}
-                                                     className="h-7 px-1.5 text-xs rounded w-full appearance-none" // Hide number spinners
-                                                     style={{MozAppearance: 'textfield'}} // Firefox hide spinners
-                                                     placeholder="0"
-                                                     aria-label={`Porcentaje para ${c?.FullName || email}`}
-                                                     disabled={isSubmitting || isSending || isFinalizingWithAI} // Disable during operations
-                                                 />
-                                                <span className="text-xs text-gray-400">%</span>
-                                             </div>
-                                         </div>
-                                         );
-                                     })}
-                                     </div>
-                                     {/* Total Percentage Indicator */}
-                                     <div className={`text-right text-sm font-semibold mt-2 pr-1 ${
-                                         Math.abs(totalPercentage - 100) < 0.01 ? "text-green-600" : "text-red-600"
-                                     }`}>
-                                         Total: {totalPercentage.toFixed(2)}%
-                                         {Math.abs(totalPercentage - 100) >= 0.01 && (
-                                         <AlertTriangle size={14} className="inline ml-1 mb-0.5" aria-label="Alerta: El total no es 100%" />
-                                         )}
-                                     </div>
-                                     {Math.abs(totalPercentage - 100) >= 0.01 && (
-                                         <p role="alert" className="text-xs text-red-600 text-center mt-1">
-                                             La suma de porcentajes debe ser exactamente 100%.
-                                         </p>
-                                     )}
-                                    </section>
-                                 )}
-
-                                 <Separator />
-
-                                 {/* ---------- General Data Section ---------- */}
-                                 <section aria-labelledby="general-data-heading-sidebar">
-                                     <h3 id="general-data-heading-sidebar" className="text-md font-semibold mb-3 flex items-center text-gray-700">
-                                         <Settings2 size={18} className="mr-2 text-indigo-600" /> Datos Generales
-                                     </h3>
-                                     <div className="space-y-3">
-                                          {/* Lugar de Firma */}
-                                         <div>
-                                             <Label htmlFor="sidebar-general-lugar" className="mb-1 block text-xs">Lugar de Firma</Label>
-                                             <Input id="sidebar-general-lugar" type="text" placeholder="Ej: Madrid, España" value={generalData.lugarDeFirma || ""} onChange={(e) => setGeneralData((p) => ({ ...p, lugarDeFirma: e.target.value })) } className="w-full text-sm h-9" disabled={isSubmitting || isSending || isFinalizingWithAI}/>
-                                         </div>
-                                         {/* Jurisdicción */}
-                                         <div>
-                                              <Label htmlFor="sidebar-general-jurisdiction" className="mb-1 block text-xs"> Jurisdicción<span className="text-red-500 ml-1">*</span> </Label>
-                                              <select id="sidebar-general-jurisdiction" value={generalData.jurisdiction} onChange={(e) => setGeneralData((p) => ({ ...p, jurisdiction: e.target.value })) } className="w-full text-sm h-9 border-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white" required aria-required="true" disabled={isSubmitting || isSending || isFinalizingWithAI} >
-                                                 <option value="" disabled> Selecciona...</option>
-                                                 {/* Add common jurisdictions */}
-                                                 <option value="España">España</option>
-                                                 <option value="México">México</option>
-                                                 <option value="Argentina">Argentina</option>
-                                                 <option value="Colombia">Colombia</option>
-                                                 <option value="Chile">Chile</option>
-                                                 <option value="Perú">Perú</option>
-                                                 <option value="Estados Unidos">Estados Unidos</option>
-                                                 <option value="Reino Unido">Reino Unido</option>
-                                                 <option value="Otro">Otro</option>
-                                               </select>
-                                          </div>
-                                          {/* Fecha */}
-                                          <div>
-                                              <Label htmlFor="sidebar-general-fecha" className="mb-1 block text-xs"> Fecha del Contrato<span className="text-red-500 ml-1">*</span> </Label>
-                                              <Input id="sidebar-general-fecha" type="date" value={generalData.fecha} onChange={(e) => setGeneralData((p) => ({ ...p, fecha: e.target.value })) } className="w-full text-sm h-9" required aria-required="true" disabled={isSubmitting || isSending || isFinalizingWithAI} />
-                                           </div>
-                                           {/* Track Title */}
-                                           <div>
-                                               <Label htmlFor="sidebar-general-track" className="mb-1 block text-xs"> Título Track / Obra<span className="text-red-500 ml-1">*</span> </Label>
-                                               <Input id="sidebar-general-track" type="text" placeholder="Ej: Corazón Digital" value={generalData.trackTitle} onChange={(e) => setGeneralData((p) => ({ ...p, trackTitle: e.target.value })) } className="w-full text-sm h-9" required aria-required="true" disabled={isSubmitting || isSending || isFinalizingWithAI} />
-                                           </div>
-                                            {/* Otros campos generales */}
-                                           <div> <Label htmlFor="sidebar-general-area" className="mb-1 block text-xs">Área Artística</Label> <Input id="sidebar-general-area" type="text" placeholder="Ej: Música Grabada" value={generalData.areaArtistica || ""} onChange={(e) => setGeneralData(p => ({ ...p, areaArtistica: e.target.value }))} className="w-full text-sm h-9" disabled={isSubmitting || isSending || isFinalizingWithAI}/> </div>
-                                           <div> <Label htmlFor="sidebar-general-duracion" className="mb-1 block text-xs">Duración Contrato</Label> <Input id="sidebar-general-duracion" type="text" placeholder="Ej: 3 años" value={generalData.duracionContrato || ""} onChange={(e) => setGeneralData(p => ({ ...p, duracionContrato: e.target.value }))} className="w-full text-sm h-9" disabled={isSubmitting || isSending || isFinalizingWithAI}/> </div>
-                                           <div> <Label htmlFor="sidebar-general-aviso" className="mb-1 block text-xs">Periodo Aviso (Renovación/Term.)</Label> <Input id="sidebar-general-aviso" type="text" placeholder="Ej: 60 días" value={generalData.periodoAviso || ""} onChange={(e) => setGeneralData(p => ({ ...p, periodoAviso: e.target.value }))} className="w-full text-sm h-9" disabled={isSubmitting || isSending || isFinalizingWithAI}/> </div>
-
-                                           {/* Validation Message */}
-                                           {!isGeneralDataComplete && selectedParticipants.length > 0 && ( // Show only if participants selected but data missing
-                                               <p role="alert" className="text-xs text-red-600 text-center mt-1">
-                                                  Completa los campos requeridos (*).
-                                               </p>
-                                           )}
-                                     </div>
-                                 </section>
-
-                               </div> {/* End p-4 */}
-                             </ScrollArea>
-                           </Card>
-                         </div> {/* End Right Column */}
-                      </motion.div> // End Editor Layout
-                    )}
-
-                    {/* --- Step 3: Sent Contracts View --- */}
-                     {step === 3 && !crmMode && (
-                         <motion.div key="sent" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.3 }}>
-                             <h2 className="text-xl md:text-2xl font-semibold text-gray-800 mb-6">Contratos Enviados</h2>
-                             {isLoading && sentContracts.length === 0 ? (
-                                 <p className="text-center text-gray-500 mt-10"><Loader2 className="inline-block mr-2 h-5 w-5 animate-spin" />Cargando enviados...</p>
-                             ) : sentContracts.length === 0 ? (
-                                 <div className="text-center text-gray-500 mt-10 py-8 border rounded-lg bg-white shadow-sm">
-                                      <Send size={40} className="mx-auto mb-3 text-gray-400"/>
-                                      <p className="font-semibold">No hay contratos enviados.</p>
-                                      <p className="text-sm mt-1">Empieza seleccionando una plantilla en la <Button variant="link" size="sm" className="p-0 h-auto" onClick={goToHome}>biblioteca</Button>.</p>
-                                 </div>
-                             ) : (
-                                 <div className="space-y-4">
-                                     {sentContracts.map((contract) => (
-                                         <Card key={contract.id} className="bg-white p-4 rounded-lg border shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                                             <div className="flex-grow">
-                                                 <h3 className="font-semibold text-md truncate" title={contract.title}>{contract.title}</h3>
-                                                 <p className="text-xs text-gray-500">Enviado: {new Date(contract.date).toLocaleDateString()} {new Date(contract.date).toLocaleTimeString()}</p>
-                                                 <div className="text-xs mt-1">
-                                                    {contract.participants.slice(0, 3).map(p => p.name).join(', ')}
-                                                    {contract.participants.length > 3 ? '...' : ''}
-                                                    <span className={`ml-2 px-1.5 py-0.5 rounded text-xs ${contract.status === 'Signed' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
-                                                        {contract.status || 'Enviado'}
-                                                    </span>
-                                                 </div>
-                                             </div>
-                                             <div className="flex gap-2 flex-shrink-0 mt-2 sm:mt-0">
-                                                 <Button size="sm" variant="outline" onClick={() => setViewingSentContract(contract)}>
-                                                     <Eye size={14} className="mr-1"/> Ver
-                                                 </Button>
-                                                 {/* Add other actions like Resend, Track Status, etc. */}
-                                             </div>
-                                         </Card>
-                                     ))}
-                                 </div>
-                             )}
-                         </motion.div>
-                     )}
-
-                    {/* --- Step 4: CRM View --- */}
-                    {crmMode && step === 4 && (
-                        <motion.div key="crm" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.3 }}>
-                            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-                                 <h2 className="text-xl md:text-2xl font-semibold text-gray-800">Gestión de Clientes (CRM)</h2>
-                                 <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
-                                     {/* CRM Search */}
-                                     <div className="relative w-full sm:w-64">
-                                         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
-                                         <Input type="text" placeholder="Buscar por nombre, email, rol..." value={templateSearchQuery} // Using templateSearchQuery also for CRM
-                                             onChange={(e) => setTemplateSearchQuery(e.target.value)} className="pl-10 w-full" aria-label="Buscar clientes en CRM" disabled={isLoading || isSubmitting}/>
-                                     </div>
-                                     {/* Add Client Button */}
-                                     <Button onClick={() => { setNewClient(INITIAL_NEW_CLIENT_STATE); setShowAddClientSidebar(true); }} className="flex items-center gap-2 justify-center sm:justify-start bg-indigo-600 hover:bg-indigo-700 text-white" aria-label="Añadir Nuevo Cliente" disabled={isSubmitting}>
-                                          <UserPlus size={16} /> Añadir Cliente
-                                      </Button>
-                                 </div>
+                                        {/* Pie de Tarjeta (Acciones) */}
+                                        <CardFooter className="p-3 pt-2 border-t bg-gray-50 flex justify-end items-center gap-1 flex-shrink-0">
+                                             {/* Botón Editar */}
+                                            <Button
+                                                size="icon" variant="ghost"
+                                                onClick={(e) => {
+                                                    e.stopPropagation(); // Prevenir que se active el click de la tarjeta
+                                                    if(!isSubmitting) {
+                                                        setTemplateToEdit(template); // Establecer la plantilla a editar
+                                                        setShowEditTemplateModal(true); // Abrir el modal
+                                                    }
+                                                }}
+                                                className="h-7 w-7 text-gray-600 hover:text-indigo-600 hover:bg-indigo-100"
+                                                aria-label={`Editar plantilla ${template.title}`}
+                                                disabled={isSubmitting}
+                                            >
+                                                <Edit size={14} />
+                                            </Button>
+                                            {/* Botón Eliminar */}
+                                            <Button
+                                                size="icon" variant="ghost"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    if (!isSubmitting) {
+                                                        requestDeleteTemplate(template); // Abrir diálogo de confirmación
+                                                    }
+                                                }}
+                                                className="h-7 w-7 text-red-600 hover:text-red-800 hover:bg-red-100"
+                                                aria-label={`Eliminar plantilla ${template.title}`}
+                                                disabled={isSubmitting}
+                                            >
+                                                <Trash2 size={14} />
+                                            </Button>
+                                        </CardFooter>
+                                    </Card>
+                                ))}
                             </div>
-                            {/* CRM Client Grid */}
-                            {(() => {
-                                const filteredCRMClients = clients.filter(c =>
-                                    (c.FullName?.toLowerCase() || "").includes(templateSearchQuery.toLowerCase()) ||
-                                    (c.email?.toLowerCase() || "").includes(templateSearchQuery.toLowerCase()) ||
-                                    (c.role?.toLowerCase() || "").includes(templateSearchQuery.toLowerCase())
-                                );
-                                return isLoading && clients.length === 0 ? (
-                                     <p className="text-center text-gray-500 mt-10"><Loader2 className="inline-block mr-2 h-5 w-5 animate-spin" />Cargando clientes...</p>
-                                 ) : !isLoading && clients.length === 0 ? (
-                                     <div className="text-center text-gray-500 mt-10 py-8 border rounded-lg bg-white shadow-sm">
-                                         <Users size={40} className="mx-auto mb-3 text-gray-400"/>
-                                         <p className="font-semibold">No hay clientes registrados.</p>
-                                         <p className="text-sm mt-1">Puedes <Button variant="link" size="sm" className="p-0 h-auto" onClick={() => setShowAddClientSidebar(true)}>añadir el primero</Button>.</p>
-                                     </div>
-                                 ) : filteredCRMClients.length === 0 ? (
-                                     <p className="text-center text-gray-500 mt-10"> No se encontraron clientes para "{templateSearchQuery}". </p>
-                                 ) : (
-                                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-5">
-                                         {filteredCRMClients.map((client) => (
-                                             <Card key={client.id} className="bg-white p-4 rounded-lg border shadow-sm hover:shadow-md transition flex flex-col justify-between group">
-                                                 {/* Client Info */}
-                                                 <div>
-                                                      <h3 className="font-semibold truncate text-sm" title={client.FullName}>
-                                                          {client.FullName || client.email}
-                                                      </h3>
-                                                      <p className="text-xs text-gray-500 truncate" title={client.email}>
-                                                          {client.email}
-                                                      </p>
-                                                      <span className={`text-xs px-2 py-0.5 rounded-full mt-1.5 inline-block font-medium ${client.role ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-600"} `}>
-                                                          {client.role || "Sin rol"}
-                                                      </span>
-                                                      {client.phone && (
-                                                          <p className="text-xs text-gray-500 mt-1 truncate" title={client.phone}>
-                                                              📞 {client.phone}
-                                                          </p>
-                                                      )}
-                                                 </div>
-                                                 {/* Actions */}
-                                                 <div className="flex justify-end gap-1 mt-3 pt-2 border-t">
-                                                     <Button size="icon" variant="ghost" onClick={() => { if(!isSubmitting) { setEditingClient(client); setShowEditClientSidebar(true); } }} className="h-7 w-7 text-gray-600 hover:text-indigo-600 hover:bg-indigo-100" aria-label={`Editar cliente ${client.name}`} disabled={isSubmitting}>
-                                                          <Edit size={14} />
-                                                      </Button>
-                                                      <Button size="icon" variant="ghost" className="h-7 w-7 text-red-600 hover:bg-red-100 hover:text-red-700" onClick={() => {if(!isSubmitting) requestDeleteClient(client)}} aria-label={`Eliminar cliente ${client.name}`} disabled={isSubmitting}>
-                                                          <Trash2 size={14} />
-                                                      </Button>
-                                                 </div>
-                                             </Card>
-                                         ))}
-                                     </div>
-                                 );
-                            })()}
-                        </motion.div>
-                    )}
+                         )}
+                    </motion.div>
+                )}
+                     {/* --- Step 2: Editor View (REVISADO v2) --- */}
+                     // --- INICIO: Copia desde aquí ---
+{/* --- Step 2: Editor View (REVISIÓN v6 - Layout/Scroll Enfocado) --- */}
+{step === 2 && selectedContract && (
+<motion.div
+key="editor-v6" // Nueva key para evitar conflictos
+initial={{ opacity: 0, y: 10 }}
+animate={{ opacity: 1, y: 0 }}
+exit={{ opacity: 0, y: -10 }}
+transition={{ duration: 0.3 }}
+// Contenedor principal: Flex, ocupa altura, sin scroll propio
+className="flex flex-col md:flex-row gap-4 lg:gap-6 flex-grow min-h-0 overflow-hidden"
+>
+{/* ------------ Columna Izquierda: Editor Completo ------------ */}
+         <div className="flex flex-col flex-grow md:w-2/3 lg:w-3/4 min-h-0"> {/* Columna ocupa espacio y permite scroll interno */}
+           <Card className="bg-white rounded-xl border shadow-md flex flex-col flex-grow overflow-hidden"> {/* Card llena la columna */}
+
+             {/* 1. Cabecera Editor (Altura fija) */}
+             <div className="p-3 border-b flex flex-col sm:flex-row justify-between items-center flex-shrink-0 bg-gray-50 rounded-t-xl">
+               <h2 className="text-lg font-semibold text-gray-700 truncate" title={selectedContract.title}>
+                 Editando: {selectedContract.title}
+               </h2>
+               <div className="flex items-center gap-1">
+                 <Button size="sm" variant="ghost" onClick={goToHome} title="Volver a la Biblioteca">
+                   <Library size={14} className="mr-1" /> Biblioteca
+                 </Button>
+               </div>
+             </div>
+
+             {/* 2. Barra Herramientas Fija (Altura fija) */}
+             <div className="flex-shrink-0 border-b">
+                <EditorToolbar
+                  onCommand={execCmd}
+                  onFormatCode={formatAsCode}
+                  onInsertBlockquote={insertBlockquote}
+                  onTriggerImageUpload={triggerImageUpload}
+                  onFontSizeChange={handleFontSizeChange}
+                />
+             </div>
+
+             {/* 3. Área de Contenido del Editor (CON SCROLL INDEPENDIENTE) */}
+             {/* Este div ocupa el espacio restante y permite scroll interno */}
+             <div className="flex-grow min-h-0 overflow-y-auto bg-white p-4 relative">
+                {/* Barra Flotante (si aún se usa) */}
+               <AnimatePresence>
+                 {showFormattingToolbar && toolbarPosition && (
+                   <motion.div
+                     ref={toolbarRef}
+                     key="floating-toolbar-v6"
+                     initial={{ opacity: 0, scale: 0.9, y: -5 }}
+                     animate={{ opacity: 1, scale: 1, y: 0 }}
+                     exit={{ opacity: 0, scale: 0.9, y: -5 }}
+                     transition={{ duration: 0.1, ease: "easeOut" }}
+                     className="absolute bg-gray-800 text-white rounded-lg shadow-xl px-2 py-1 flex items-center gap-0.5 z-50"
+                     style={{ top: `${toolbarPosition.top}px`, left: `${toolbarPosition.left}px` }}
+                     onMouseDown={(e) => e.preventDefault()}
+                   >
+                     <Button variant="ghost" size="icon" className="h-7 w-7 text-white hover:bg-gray-700" title="Negrita" onClick={() => execCmd("bold")}><Bold size={16} /></Button>
+                     <Button variant="ghost" size="icon" className="h-7 w-7 text-white hover:bg-gray-700" title="Cursiva" onClick={() => execCmd("italic")}><Italic size={16} /></Button>
+                     <Button variant="ghost" size="icon" className="h-7 w-7 text-white hover:bg-gray-700" title="Subrayado" onClick={() => execCmd("underline")}><Underline size={16} /></Button>
+                     <Button variant="ghost" size="icon" className="h-7 w-7 text-white hover:bg-gray-700" title="Tachado" onClick={() => execCmd("strikeThrough")}><Strikethrough size={16} /></Button>
+                   </motion.div>
+                 )}
+               </AnimatePresence>
+
+               {/* Div Editable */}
+               <div
+                 ref={editorRef}
+                 contentEditable
+                 dangerouslySetInnerHTML={{ __html: editedContent || selectedContract.content || "" }}
+                 onInput={(e) => {
+                    const selection = window.getSelection();
+                    const range = selection?.getRangeAt(0);
+                    
+                    // Actualiza el estado...
+                    
+                    // Restaura la selección
+                    if (selection && range) {
+                      selection.removeAllRanges();
+                      selection.addRange(range);
+                    }
+                 }}
+                 onKeyDown={(e) => {
+                     if (e.key === "Enter" && !e.shiftKey) {
+                         e.preventDefault();
+                         // Add your logic here if needed
+                     }
+                 }}
+                 style={{
+                     // fontFamily: 'Georgia, serif',
+                     fontSize: '12pt',             // Tamaño un poco más grande
+                     lineHeight: '1.6',            // Buen espaciado
+                     paddingBottom: '10vh',        // Espacio extra al final para scroll
+                     wordBreak: "break-word",
+                     overflowWrap: "break-word",
+                 }}
+                 suppressContentEditableWarning
+                 aria-label="Editor de contenido del contrato"
+                 role="textbox"
+                 aria-multiline="true"
+               />
+             </div> {/* Fin Área Contenido Editor */}
+
+             {/* 4. Pie de Página Editor (Altura fija) */}
+              <CardFooter className="flex flex-col sm:flex-row justify-between items-center gap-3 p-3 border-t bg-gray-50 flex-shrink-0">
+                  {/* Botones Descarga */}
+                  <div className="flex gap-2 w-full sm:w-auto justify-start">
+                     <Button variant="secondary" size="sm" onClick={() => handleDownload("pdf")} disabled={isSubmitting || isSending || isFinalizingWithAI || !editorRef.current?.innerHTML?.trim()}> <Download size={16} className="mr-1" /> PDF </Button>
+                     <Button variant="secondary" size="sm" onClick={() => handleDownload("word")} disabled={isSubmitting || isSending || isFinalizingWithAI || !editorRef.current?.innerHTML?.trim()}> <Download size={16} className="mr-1" /> Word </Button>
+                  </div>
+                  {/* Botones Acción */}
+                  <div className="flex gap-2 w-full sm:w-auto justify-end">
+                      <Button variant="outline" size="sm" onClick={handleFinalizeWithAI} disabled={!selectedContract || selectedParticipants.length === 0 || Math.abs(totalPercentage - 100) >= 0.01 || !isGeneralDataComplete || isSubmitting || isSending || isFinalizingWithAI} className="border-purple-500 text-purple-700 hover:bg-purple-50">
+                          {isFinalizingWithAI ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-1 text-yellow-500" size={16} />} Finalizar con IA
+                      </Button>
+                      <Button 
+    onClick={handleSendContract}  // <-- CAMBIA ESTO
+    disabled={!isEditorReadyToSend || isSending || isSubmitting || isFinalizingWithAI}
+    className={`bg-green-600 hover:bg-green-700 text-white ${(!isEditorReadyToSend || isSending || isSubmitting || isFinalizingWithAI) ? "opacity-50 cursor-not-allowed" : ""}`} 
+    title={
+        !isEditorReadyToSend
+            ? 'Revisa que hayas seleccionado plantilla, participantes, datos generales y eliminado todos los placeholders'
+            : undefined
+    }
+>
+    {isSending ? <> <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Enviando… </> : <> <Send className="mr-1" size={16} /> Enviar Contrato </>}
+</Button>
+                      <Button 
+  variant="outline" 
+  size="sm" 
+  onClick={() => {
+    try {
+      const updatedContent = applyAllDataToContent();
+      setEditedContent(updatedContent);
+      if (editorRef.current) {
+        editorRef.current.innerHTML = updatedContent;
+      }
+      toast.success("Contenido actualizado");
+    } catch (error) {
+      console.error("Error actualizando contenido:", error);
+      toast.error("Error al actualizar contenido");
+    }
+  }}
+>
+  <RefreshCw size={16} className="mr-1" /> Actualizar
+</Button>
+                  </div>
+              </CardFooter>
+           </Card>
+         </div> {/* Fin Columna Izquierda */}
+
+
+         {/* ------------ Columna Derecha: Sidebar Completa ------------ */}
+         <div className="w-full md:w-1/3 lg:w-1/4 flex flex-col flex-shrink-0 min-h-0"> {/* Columna ocupa espacio y permite scroll interno */}
+           <Card className="bg-white rounded-xl border shadow-md flex flex-col flex-grow overflow-hidden"> {/* Card llena la columna */}
+             {/* Área de Contenido de la Sidebar (CON SCROLL INDEPENDIENTE) */}
+             <ScrollArea className="flex-grow min-h-0"> {/* ScrollArea gestiona el scroll */}
+               <div className="p-4 space-y-6"> {/* Padding y espaciado interno */}
+
+                 {/* --- Sección Participantes --- */}
+                 <section aria-labelledby="participants-heading">
+                   <h3 id="participants-heading" className="text-md font-semibold mb-3 flex items-center text-gray-700">
+                     <Users size={18} className="mr-2 text-indigo-600" /> Participantes
+                   </h3>
+                   <div className="mb-3 relative">
+                     <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                     <Input
+                       type="text" placeholder="Buscar cliente..." value={searchQuery}
+                       onChange={(e) => setSearchQuery(e.target.value)}
+                       className="w-full pl-9 h-9 text-sm"
+                       disabled={isLoading || isSubmitting || isSending || isFinalizingWithAI}
+                     />
+                   </div>
+                   <div className="max-h-48 overflow-y-auto border rounded-md p-2 space-y-1 bg-gray-50">
+                     {isLoading && clients.length === 0 ? (
+                       <p className="text-center text-xs text-gray-500 py-3"><Loader2 className="inline-block mr-1 h-3 w-3 animate-spin" />Cargando...</p>
+                     ) : filteredClientsForParticipants.length === 0 ? (
+                       <p className="text-center text-xs text-gray-500 py-3">
+                         {searchQuery ? `No hay resultados para "${searchQuery}"` : clients.length === 0 ? "No hay clientes." : "No se encontraron."}
+                       </p>
+                     ) : (
+                       filteredClientsForParticipants.map((client) => (
+                         <div key={client.id} className="flex items-center p-1.5 rounded hover:bg-indigo-50 text-sm transition-colors">
+                           <input
+                             type="checkbox" id={`sidebar-client-select-${client.id}`}
+                             checked={selectedParticipants.includes(client.email)}
+                             onChange={(e) => handleCheckboxChange(e, client.email)}
+                             className="mr-2 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                             disabled={isSubmitting || isSending || isFinalizingWithAI}
+                             aria-labelledby={`label-client-${client.id}`}
+                           />
+                           <label htmlFor={`sidebar-client-select-${client.id}`} id={`label-client-${client.id}`} className="flex-1 cursor-pointer select-none">
+                             <span className="font-medium block truncate" title={client.FullName || client.email}>{client.FullName || client.email}</span>
+                             <span className="text-xs text-gray-500">({client.role || "Sin rol"})</span>
+                           </label>
+                         </div>
+                       ))
+                     )}
+                   </div>
+                   <Button variant="outline" size="sm" className="w-full mt-2 text-xs" onClick={() => setShowAddClientSidebar(true)} disabled={isSubmitting || isSending || isFinalizingWithAI}>
+                     <UserPlus size={14} className="mr-1"/> Añadir Nuevo Cliente
+                   </Button>
+                 </section>
+                 <Separator />
+
+                 {/* --- Sección Porcentajes --- */}
+                 {selectedParticipants.length > 0 && (
+                   <section aria-labelledby="percentages-heading-sidebar">
+                     <h3 id="percentages-heading-sidebar" className="text-md font-semibold mb-3 flex items-center text-gray-700">
+                       <Percent size={18} className="mr-2 text-indigo-600" /> Porcentajes (%)
+                     </h3>
+                     <div className="space-y-2">
+                       {selectedParticipants.map((email) => {
+                         const c = clients.find((cl) => cl.email === email);
+                         return (
+                           <div key={email} className="flex items-center gap-2 text-sm justify-between">
+                             <Label htmlFor={`sidebar-perc-${email}`} className="flex-1 truncate pr-2 text-xs select-none" title={c?.FullName || email}>
+                               {c?.FullName || email}
+                             </Label>
+                             <div className="flex items-center gap-1 w-20 flex-shrink-0">
+                               <Input
+                                 id={`sidebar-perc-${email}`} type="number" min="0" max="100" step="0.01"
+                                 value={participantPercentages[email] ?? ""}
+                                 onChange={(e) => handlePercentageChange(email, e.target.value)}
+                                 className="h-7 px-1.5 text-xs rounded w-full appearance-none" style={{MozAppearance: 'textfield'}}
+                                 placeholder="0" aria-label={`Porcentaje para ${c?.FullName || email}`}
+                                 disabled={isSubmitting || isSending || isFinalizingWithAI}
+                               />
+                               <span className="text-xs text-gray-400">%</span>
+                             </div>
+                           </div>
+                         );
+                       })}
+                     </div>
+                     {/* Total */}
+                     <div className={`text-right text-sm font-semibold mt-2 pr-1 ${Math.abs(totalPercentage - 100) < 0.01 ? "text-green-600" : "text-red-600"}`}>
+                       Total: {totalPercentage.toFixed(2)}%
+                       {Math.abs(totalPercentage - 100) >= 0.01 && <AlertTriangle size={14} className="inline ml-1 mb-0.5"/>}
+                     </div>
+                     {Math.abs(totalPercentage - 100) >= 0.01 && <p role="alert" className="text-xs text-red-600 text-center mt-1">La suma debe ser 100%.</p>}
+                   </section>
+                 )}
+                 <Separator />
+
+                {/* --- Sección Datos Generales --- */}
+                 <section aria-labelledby="general-data-heading-sidebar">
+                     <h3 id="general-data-heading-sidebar" className="text-md font-semibold mb-3 flex items-center text-gray-700">
+                         <Settings2 size={18} className="mr-2 text-indigo-600" /> Datos Generales
+                     </h3>
+                     <div className="space-y-3">
+                          {/* Lugar de Firma */}
+                         <div>
+                             <Label htmlFor="sg-lugar" className="mb-1 block text-xs">Lugar de Firma</Label>
+                             <Input id="sg-lugar" type="text" placeholder="Ej: Madrid, España" value={generalData.lugarDeFirma || ""} onChange={(e) => setGeneralData(p => ({ ...p, lugarDeFirma: e.target.value }))} className="w-full text-sm h-9" disabled={isSubmitting || isSending || isFinalizingWithAI}/>
+                         </div>
+                         {/* Jurisdicción */}
+                         <div>
+                              <Label htmlFor="sg-jur" className="mb-1 block text-xs"> Jurisdicción<span className="text-red-500 ml-1">*</span> </Label>
+                              <select id="sg-jur" value={generalData.jurisdiction} onChange={(e) => setGeneralData(p => ({ ...p, jurisdiction: e.target.value }))} className="w-full text-sm h-9 border-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white" required aria-required="true" disabled={isSubmitting || isSending || isFinalizingWithAI}>
+                                 <option value="" disabled> Selecciona...</option>
+                                 <option value="España">España</option>
+                                 <option value="México">México</option>
+                                 <option value="Argentina">Argentina</option>
+                                 <option value="Colombia">Colombia</option>
+                                 <option value="Chile">Chile</option>
+                                 <option value="Perú">Perú</option>
+                                 <option value="Estados Unidos">Estados Unidos</option>
+                                 <option value="Reino Unido">Reino Unido</option>
+                                 <option value="Otro">Otro</option>
+                               </select>
+                          </div>
+                          {/* Fecha */}
+                          <div>
+                              <Label htmlFor="sg-fecha" className="mb-1 block text-xs"> Fecha del Contrato<span className="text-red-500 ml-1">*</span> </Label>
+                              <Input id="sg-fecha" type="date" value={generalData.fecha} onChange={(e) => setGeneralData(p => ({ ...p, fecha: e.target.value }))} className="w-full text-sm h-9" required aria-required="true" disabled={isSubmitting || isSending || isFinalizingWithAI} />
+                           </div>
+                           {/* Track Title */}
+                           <div>
+                               <Label htmlFor="sg-track" className="mb-1 block text-xs"> Título Track / Obra<span className="text-red-500 ml-1">*</span> </Label>
+                               <Input id="sg-track" type="text" placeholder="Ej: Corazón Digital" value={generalData.trackTitle} onChange={(e) => setGeneralData(p => ({ ...p, trackTitle: e.target.value }))} className="w-full text-sm h-9" required aria-required="true" disabled={isSubmitting || isSending || isFinalizingWithAI} />
+                           </div>
+                            {/* Área Artística */}
+                           <div>
+                               <Label htmlFor="sg-area" className="mb-1 block text-xs">Área Artística</Label>
+                               <Input id="sg-area" type="text" placeholder="Ej: Música Grabada" value={generalData.areaArtistica || ""} onChange={(e) => setGeneralData(p => ({ ...p, areaArtistica: e.target.value }))} className="w-full text-sm h-9" disabled={isSubmitting || isSending || isFinalizingWithAI}/>
+                           </div>
+                           {/* Duración Contrato */}
+                           <div>
+                               <Label htmlFor="sg-duracion" className="mb-1 block text-xs">Duración Contrato</Label>
+                               <Input id="sg-duracion" type="text" placeholder="Ej: 1 año" value={generalData.duracionContrato || ""} onChange={(e) => setGeneralData(p => ({ ...p, duracionContrato: e.target.value }))} className="w-full text-sm h-9" disabled={isSubmitting || isSending || isFinalizingWithAI}/>
+                           </div>
+                           {/* Periodo Aviso */}
+                           <div>
+                               <Input id="sg-duracion" type="text" placeholder="Ej: 1 año" value={generalData.duracionContrato || ""} onChange={(e) => setGeneralData(p => ({ ...p, duracionContrato: e.target.value }))} className="w-full text-sm h-9" disabled={isSubmitting || isSending || isFinalizingWithAI}/>
+                           </div>
+                           {/* Periodo Aviso */}
+                           <div>
+                               <Label htmlFor="sg-aviso" className="mb-1 block text-xs">Periodo Aviso</Label>
+                               <Input id="sg-aviso" type="text" placeholder="Ej: 30 días" value={generalData.periodoAviso || ""} onChange={(e) => setGeneralData(p => ({ ...p, periodoAviso: e.target.value }))} className="w-full text-sm h-9" disabled={isSubmitting || isSending || isFinalizingWithAI}/>
+                           </div>
+                           {/* Porcentaje Comisión */}
+                            <div>
+                                <Label htmlFor="sg-comision" className="mb-1 block text-xs">Porcentaje Comisión (%)</Label>
+                                <Input
+                                    id="sg-comision"
+                                    type="number"
+                                    placeholder="Ej: 15"
+                                    value={generalData.porcentajeComision || ""}
+                                    onChange={(e) => {
+                                        setGeneralData(prev => ({ 
+                                            ...prev, 
+                                            porcentajeComision: e.target.value 
+                                        }));
+                                    }}
+                                    className="w-full text-sm h-9"
+                                    disabled={isSubmitting || isSending || isFinalizingWithAI}
+                                />
+                            </div>
+                           {/* Mensaje Validación */}
+                           {!isGeneralDataComplete && selectedParticipants.length > 0 && (
+                               <p role="alert" className="text-xs text-red-600 text-center mt-1">
+                                  Completa los campos requeridos (*).
+                               </p>
+                           )}
+                     </div>
+                 </section>
+
+               </div> {/* Fin p-4 space-y-6 */}
+             </ScrollArea>
+           </Card>
+         </div> {/* Fin Columna Derecha */}
+
+      </motion.div> // Fin Editor Layout
+  )}
+  {/* --- FIN --- */}
+
+{/* --- FIN --- Copia hasta aquí --- */}
 
                     {/* --- Step 5: Signed View (Placeholder) --- */}
-                     {step === 5 && !crmMode && (
+                    {step === 5 && (
                         <motion.div key="signed" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.3 }} className="text-center text-gray-600 py-10">
                              <CheckCircle size={48} className="mx-auto mb-4 text-green-500"/>
                              <p className="text-lg font-semibold">Contratos Firmados</p>
@@ -2773,7 +2822,8 @@ const ContractLibrary = () => { // <--- Inicio del componente
             )} </AnimatePresence>
 
             {/* Edit Client Sidebar */}
-            <AnimatePresence> {showEditClientSidebar && editingClient && (
+            <AnimatePresence> 
+            {showEditClientSidebar && editingClient && (
                 <motion.div
                     ref={editClientSidebarRef}
                     key="edit-client-sidebar"
@@ -3103,6 +3153,7 @@ const ContractLibrary = () => { // <--- Inicio del componente
 
         </div> // End Root Div
     );
-};
+
+}; // <--- END OF ContractLibrary COMPONENT
 
 export default ContractLibrary;

@@ -9,6 +9,10 @@ const transporter = nodemailer.createTransport({
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS, // Recuerda usar contraseña de aplicación si es Gmail con 2FA
   },
+  // Opciones adicionales para Gmail
+  tls: {
+    rejectUnauthorized: false
+  }
 });
 
 /**
@@ -20,39 +24,35 @@ const transporter = nodemailer.createTransport({
  * @param attachmentPath Ruta al archivo adjunto (opcional)
  * @returns Promise<boolean> - true si se envió (o al menos se aceptó para envío), lanza error si falla.
  */
-export async function enviarCorreo(to: string | string[], subject: string, text: string, html?: string, attachmentPath?: string): Promise<boolean> {
-  console.log(`[Email Service] Preparando correo para: ${Array.isArray(to) ? to.join(', ') : to}, Asunto: ${subject}`);
-
-  const mailOptions: nodemailer.SendMailOptions = {
-    from: `"MVPX Contracts" <${process.env.EMAIL_USER}>`, // Personaliza el nombre del remitente
-    to, // Puede ser un string o un array
-    subject,
-    text,
-  };
-
-  if (html) {
-    mailOptions.html = html;
-  }
-
-  if (attachmentPath) {
-    mailOptions.attachments = [{ path: attachmentPath }];
-    console.log(`[Email Service] Adjuntando archivo: ${attachmentPath}`);
-  }
-
+export async function enviarCorreo(
+  to: string | string[], 
+  subject: string, 
+  text: string, 
+  html?: string, 
+  attachmentPath?: string
+): Promise<boolean> {
   try {
+    const mailOptions: nodemailer.SendMailOptions = {
+      from: process.env.EMAIL_USER,
+      to,
+      subject,
+      text,
+      html,
+      attachments: attachmentPath ? [
+        {
+          filename: attachmentPath.split('/').pop() || 'contrato.pdf',
+          path: attachmentPath,
+        }
+      ] : undefined
+    };
+    
     const info = await transporter.sendMail(mailOptions);
-    console.log(`[Email Service] Correo enviado (o en cola). Message ID: ${info.messageId}`);
-
-    // // Descomenta si necesitas borrar adjuntos y has importado fs
-    // if (attachmentPath) {
-    //   await fs.unlink(attachmentPath).catch(err => console.error(`[Email Service] Error borrando adjunto ${attachmentPath}:`, err));
-    // }
-    return true; // Indica éxito
-
+    console.log("Email enviado:", info.response);
+    return true;
+    
   } catch (error) {
-    console.error(`[Email Service] Error enviando correo a ${Array.isArray(to) ? to.join(', ') : to}:`, error);
-    // Relanzamos el error para que el catch que llama a esta función (en la API route) lo maneje
-    throw error;
+    console.error("Error enviando email:", error);
+    throw error; // Re-lanza para manejo en la capa superior
   }
 }
 
