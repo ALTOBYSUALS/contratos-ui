@@ -3,8 +3,10 @@ import type {
   PageObjectResponse,
   QueryDatabaseParameters
 } from "@notionhq/client/build/src/api-endpoints";
-import { logger, NotionError, withRetry } from '../lib/error-handling';
+import { NotionError, withRetry } from '../lib/error-handling';
 import { config } from '../lib/config';
+
+const logger = console; // Use built-in console
 
 // Interfaces exportadas (se mantienen compatibles con el servicio original)
 export interface ContractTemplate { 

@@ -1,7 +1,8 @@
 import nodemailer from 'nodemailer';
 import { Resend } from 'resend';
 import { config } from '../lib/config';
-import { logger, EmailError, withRetry } from '../lib/error-handling';
+import { EmailError, withRetry } from '../lib/error-handling';
+const logger = console; // Use built-in console
 
 /**
  * Interfaz para datos de envío de correo

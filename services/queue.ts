@@ -1,4 +1,4 @@
-import { logger } from '../lib/error-handling';
+const logger = console; // Use built-in console
 import { config } from '../lib/config';
 
 /**
