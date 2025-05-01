@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { logger, ValidationError } from './error-handling';
+import { ValidationError } from './error-handling';
 import { z } from 'zod';
 
 /**
@@ -47,7 +47,7 @@ export async function validateRequest<T>(
         message: err.message
       }));
       
-      logger.warn('Validation error', { errors: formattedErrors });
+      console.warn('Validation error', { errors: formattedErrors });
       
       throw new ValidationError(
         strictValidation
@@ -63,7 +63,7 @@ export async function validateRequest<T>(
     }
     
     // Cualquier otro error en el proceso de validación
-    logger.error('Unexpected validation error', error);
+    console.error('Unexpected validation error', error);
     throw new ValidationError(`Error de validación: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
@@ -94,7 +94,7 @@ export function withValidation<T>(
       }
       
       // Otros errores no relacionados con la validación
-      logger.error('API error in validation middleware', error);
+      console.error('API error in validation middleware', error);
       return NextResponse.json(
         { error: 'Error interno del servidor' },
         { status: 500 }

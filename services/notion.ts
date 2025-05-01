@@ -502,3 +502,9 @@ export async function updateFinalContractStatus(
 }
 
 // --- FIN del servicio Notion ---
+
+// Archivo puente que reexporta desde el nuevo servicio refactorizado
+export * from './notion-service';
+
+// Esto asegura que todas las funciones que anteriormente se importaban desde '@/services/notion'
+// ahora serán redirigidas a los métodos mejorados de la clase NotionService
