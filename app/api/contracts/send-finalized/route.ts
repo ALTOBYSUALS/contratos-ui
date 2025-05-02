@@ -83,6 +83,11 @@ export async function POST(request: NextRequest) {
         let pdfBytesDraft;
         try {
             // --- Opciones actualizadas para Puppeteer en Vercel ---
+            // Configurar explícitamente Chromium para Vercel Serverless
+            chromium.setHeadlessMode(true);
+            // Necesario para entornos serverless
+            chromium.setGraphicsMode("swiftshader");
+            
             const executablePath = await chromium.executablePath();
             console.log('[Puppeteer] Using executable path:', executablePath); // Log para debug
 
@@ -90,7 +95,7 @@ export async function POST(request: NextRequest) {
                 args: chromium.args,
                 defaultViewport: chromium.defaultViewport,
                 executablePath: executablePath,
-                headless: chromium.headless, // Usar 'new' headless mode
+                headless: true, // Usar modo headless explícito
              });
              // --- Fin Opciones ---
             const page = await browser.newPage();
