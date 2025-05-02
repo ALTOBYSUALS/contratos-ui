@@ -1,1 +1,14 @@
-{"functions":{"app/api/contracts/send-finalized/route.ts":{"memory":1024,"maxDuration":60,"includeFiles":"node_modules/@sparticuz/chromium-min/**"}}}
+{
+    "functions": {
+      "app/api/contracts/send-finalized/route.ts": {
+        "memory": 1024,
+        "maxDuration": 60,
+        "includeFiles": "node_modules/@sparticuz/chromium-min/**"
+      },
+      "app/api/generate-pdf/route.ts": {
+        "memory": 1024,
+        "maxDuration": 60,
+        "includeFiles": "node_modules/@sparticuz/chromium-min/**"
+      }
+    }
+  }
