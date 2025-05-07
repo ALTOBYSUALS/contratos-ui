@@ -4,6 +4,18 @@ import { handleApiError, PDFGenerationError } from '@/lib/error-handling';
 import { generatePdf } from '@/services/pdf';
 
 export const dynamic = 'force-dynamic'; // Asegura que no se cachee
+// Increase memory and execution time for PDF generation
+export const runtime = 'nodejs'; // Specify Node.js runtime
+
+// Log environment variables that might affect PDF generation
+console.log('PDF API environment check:', {
+  puppeteerProduct: process.env.PUPPETEER_PRODUCT || 'Not set',
+  nodeEnv: process.env.NODE_ENV,
+  vercelEnv: process.env.VERCEL_ENV,
+  blobToken: process.env.BLOB_READ_WRITE_TOKEN ? 'Set' : 'Not set',
+  appUrl: process.env.NEXT_PUBLIC_APP_URL || 'Not set',
+  region: process.env.VERCEL_REGION
+});
 
 // Implementación directa sin usar el middleware de validación
 export async function POST(req: NextRequest) {
@@ -36,6 +48,13 @@ export async function POST(req: NextRequest) {
     
     console.info('Generando PDF', { title: options.title, format: options.format });
     
+    // Add information about the environment
+    console.info('Environment:', {
+      nodeEnv: process.env.NODE_ENV,
+      vercelEnv: process.env.VERCEL_ENV,
+      region: process.env.VERCEL_REGION
+    });
+    
     // Generar PDF utilizando el servicio mejorado
     const pdfBuffer = await generatePdf(body.htmlContent, options);
 
@@ -52,6 +71,7 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (error) {
+    console.error('API Error:', error);
     return handleApiError(error);
   }
 }

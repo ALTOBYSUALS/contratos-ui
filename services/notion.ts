@@ -16,6 +16,9 @@ import type {
   QueryDatabaseParameters,
 } from "@notionhq/client/build/src/api-endpoints";
 
+// Importar el servicio centralizado
+import { notionService } from './notion-service';
+
 // --- Inicialización del Cliente Notion y IDs ---
 export const notion = process.env.NOTION_TOKEN ? new Client({ auth: process.env.NOTION_TOKEN }) : null;
 
@@ -226,46 +229,10 @@ export async function createNotionContract(
  * enlazándolo al contrato especificado.
  */
 export async function createNotionSigner(signerData: SignerDataInput): Promise<{ id: string } | null> {
-    if (!notion || !firmantesDbId) {
-        console.error("[createNotionSigner] Notion o NOTION_DB_SIGNERS no configurado.");
-        return null;
-    }
-    if (!signerData.contractPageId) {
-        console.error("[createNotionSigner] Se requiere 'contractPageId' para crear un firmante.");
-        return null;
-    }
-    console.log(`[Notion Service] Creando firmante en Notion: ${signerData.name} (${signerData.email}) para contrato ${signerData.contractPageId}`);
-
-    try {
-        const properties: Record<string, any> = {
-            // --- ¡¡AJUSTA ESTOS NOMBRES A TU DB FIRMANTES!! ---
-            "Nombre Firmante": { title: [{ text: { content: signerData.name } }] }, // Propiedad Title principal
-            "Email": { email: signerData.email },                                 // Propiedad Email
-            // "Role": { select: { name: signerData.role || 'Firmante' } }, // Si tienes rol (Select)
-            "Contrato Relacionado": { relation: [{ id: signerData.contractPageId }] }, // Propiedad Relation (¡Esencial!)
-            "Fecha Firma": { date: null },                                         // Propiedad Date (inicialmente vacía)
-            // Propiedades Number para coordenadas/tamaño
-            "Página Firma": { number: signerData.pageNumber },
-            "Pos X Firma": { number: signerData.posX },
-            "Pos Y Firma": { number: signerData.posY },
-            "Ancho Firma": { number: signerData.signatureWidth },
-            "Alto Firma": { number: signerData.signatureHeight },
-            // Añade otras propiedades si las necesitas (ej. un Status para el firmante)
-        };
-
-        const signerPage = await notion.pages.create({
-            parent: { database_id: firmantesDbId },
-            properties: properties,
-        });
-
-        console.log(`[Notion Service] Firmante creado OK - pageId: ${signerPage.id}`);
-        return { id: signerPage.id };
-
-    } catch (e: any) {
-        console.error(`[Notion Service] Error creando firmante ${signerData.email}:`, e?.body || e.message);
-        return null;
-    }
+    // Use the singleton implementation from notionService instead
+    return notionService.createNotionSigner(signerData);
 }
+
 /**
  * Obtiene la lista de contratos creados desde Notion.
  * TODO: Implementar paginación si es necesario.
@@ -508,3 +475,6 @@ export * from './notion-service';
 
 // Esto asegura que todas las funciones que anteriormente se importaban desde '@/services/notion'
 // ahora serán redirigidas a los métodos mejorados de la clase NotionService
+
+export const updateSignerContractRelation = (signerId: string, contractId: string): Promise<void> => 
+  notionService.updateSignerContractRelation(signerId, contractId);

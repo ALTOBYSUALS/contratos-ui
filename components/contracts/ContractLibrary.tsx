@@ -10,7 +10,7 @@ import { Document, Paragraph, TextRun, Packer, HeadingLevel, AlignmentType } fro
 import * as mammoth from "mammoth";
 
 // --- Shadcn/UI Imports ---
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -24,25 +24,33 @@ import {
     DialogTitle,
     DialogDescription,
     DialogFooter,
+    DialogTrigger,
+    DialogClose
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 // --- Fin Shadcn/UI Imports ---
 
 // --- Lucide Icons ---
 import {
     X, Save, UserPlus, Download, Trash2, Edit, Percent, AlertTriangle,
     Bold, Italic, Sparkles, Upload, Search, Strikethrough, ListOrdered, List,
-    ArrowLeft, Library, Send, CheckCircle, Users, /* Eye, */ Edit2, Plus, Settings2,
-    Code, Quote, Underline, ImagePlus, Loader2, RefreshCw // Added Loader icon
+    ArrowLeft, Library, Send, CheckCircle, Users, Edit2, Plus, Settings2,
+    Code, Quote, Underline, ImagePlus, Loader2, RefreshCw, MoreVertical, PenTool, 
+    ChevronDown, Check, AlignLeft, AlignCenter, AlignRight, Link, Clipboard, 
+    Heading1, Heading2, Image, FileText, Calendar, MapPin, Settings, User, RotateCw
 } from "lucide-react";
 // -----------------------
 
 // --- Tipos (asumiendo que están en '@/lib/types') ---
-// Línea 42 - CORREGIDA
-import type { Client, Template, SentContract, GeneralContractData } from '@/lib/types';
+import type { Client, Template, SentContract, GeneralContractData, ParticipantFinal } from '@/lib/types';
 // --- FIN DE LÍNEA A MANTENER ---
 
 import React, { useState, useRef, useEffect, useCallback, ChangeEvent, useMemo } from "react";
+import dynamic from 'next/dynamic';
+import SentContractsList from './sent/SentContractsList';
+import { CreateContractModal } from './CreateContractModal'; // Importamos el modal
 
 // Custom debounce implementation to replace lodash.debounce
 function debounce<F extends (...args: any[]) => any>(func: F, waitFor: number) {
@@ -60,14 +68,15 @@ function debounce<F extends (...args: any[]) => any>(func: F, waitFor: number) {
 
 // --- CORRECCIÓN: Definir la constante aquí ---
 const INITIAL_GENERAL_DATA: GeneralContractData = {
-    jurisdiction: "",
-    fecha: "",
-    trackTitle: "",
-    lugarDeFirma: "",
-    areaArtistica: "",
-    duracionContrato: "",
-    periodoAviso: "",
-    porcentajeComision: "", // Asegúrate de que esto sea "" y no undefined
+    template_id: "", // Correcto, es interno, no un placeholder visible
+    trackTitle: "",      // Corresponde a [trackTitle]
+    fecha: "",           // Corresponde a [Fecha]
+    lugarDeFirma: "",    // Corresponde a [LugarDeFirma]
+    jurisdiction: "",    // Corresponde a [Jurisdiccion]
+    areaArtistica: "",   // Corresponde a [AreaArtistica]
+    porcentajeComision: "", // Corresponde a [PorcentajeComision] (considerar si debe ser string o number)
+    duracionContrato: "",// Corresponde a [DuracionContrato]
+    periodoAviso: "",    // Corresponde a [PeriodoAviso]
 };
 
 // --- También define el estado inicial para el formulario de nuevo cliente ---
@@ -238,6 +247,9 @@ const ContractLibrary = () => { // <--- Inicio del componente
     const [toolbarPosition, setToolbarPosition] = useState<{ top: number; left: number } | null>(null);
     const [isSelecting, setIsSelecting] = useState(false);
 
+    // Nuevo estado para controlar la visibilidad del modal de datos generales
+    const [showGeneralDataModal, setShowGeneralDataModal] = useState(false);
+
     // --- Refs ---
     const addClientSidebarRef = useRef<HTMLDivElement>(null);
     const editClientSidebarRef = useRef<HTMLDivElement>(null);
@@ -266,27 +278,94 @@ const ContractLibrary = () => { // <--- Inicio del componente
                     fetch('/api/contracts')
                 ]);
 
-                
-
                 // Validaciones de respuesta...
                 if (!templatesRes.ok) throw new Error(`Plantillas API Error: ${templatesRes.status} ${templatesRes.statusText}`);
                 if (!clientsRes.ok) throw new Error(`Clientes API Error: ${clientsRes.status} ${clientsRes.statusText}`);
                 if (!sentContractsRes.ok) console.warn(`Enviados API Warning: ${sentContractsRes.status} ${sentContractsRes.statusText}`);
 
-                const templatesData: Template[] = await templatesRes.json();
-                // --- CORRECCIÓN: Tipar correctamente clientsDataRaw ---
-                const clientsDataRaw: Record<string, any>[] = await clientsRes.json(); // <-- Tipo corregido
-                const sentContractsData: SentContract[] = sentContractsRes.ok ? await sentContractsRes.json() : [];
+                // --- MAYOR ROBUSTEZ EN PROCESAMIENTO DE DATOS ---
+                let templatesData: Template[] = [];
+                let clientsDataRaw: Record<string, any>[] = [];
+                let sentContractsData: SentContract[] = [];
+                
+                try {
+                    templatesData = await templatesRes.json();
+                    // Filtrar para eliminar elementos null/undefined o con propiedades incorrectas
+                    templatesData = templatesData.filter(t => 
+                        t && typeof t === 'object' && 
+                        // Asegurarse de que las propiedades críticas existan
+                        typeof t.id !== 'undefined' && 
+                        // Si no hay título, establecer uno por defecto
+                        (t.title = t.title || "Sin título") !== ""
+                    );
+                } catch (e) {
+                    console.error("Error parsing templates:", e);
+                    templatesData = [];
+                }
+                
+                try {
+                    clientsDataRaw = await clientsRes.json();
+                    // Filtrar elementos inválidos
+                    clientsDataRaw = clientsDataRaw.filter(c => c && typeof c === 'object');
+                } catch (e) {
+                    console.error("Error parsing clients:", e);
+                    clientsDataRaw = [];
+                }
+                
+                try {
+                    if (sentContractsRes.ok) {
+                        sentContractsData = await sentContractsRes.json();
+                        // Filtrar elementos inválidos
+                        sentContractsData = sentContractsData.filter(sc => sc && typeof sc === 'object');
+                    }
+                } catch (e) {
+                    console.error("Error parsing sent contracts:", e);
+                    sentContractsData = [];
+                }
 
-                // --- CORRECCIÓN: Usar createClientObject sin 'as' ---
-                const clientsDataProcessed: Client[] = clientsDataRaw.map(clientRaw => createClientObject(clientRaw)); // <-- 'as' eliminado
+                // --- CORRECCIÓN: Procesar clientes con seguridad adicional ---
+                const clientsDataProcessed: Client[] = clientsDataRaw.map(clientRaw => {
+                    try {
+                        return createClientObject(clientRaw);
+                    } catch (e) {
+                        console.error("Error creating client object:", e, clientRaw);
+                        // Crear un objeto cliente minimal válido para evitar errores
+                        return createClientObject({
+                            email: clientRaw.email || `unknown-${Date.now()}@example.com`,
+                            firstName: "Error",
+                            lastName: "De Datos"
+                        });
+                    }
+                }).filter(client => !!client.email); // Filtrar los que no tienen email válido
 
-                // Actualiza estados
-                setTemplates(templatesData.sort((a, b) => a.title.localeCompare(b.title)));
-                setClients(clientsDataProcessed.sort((a, b) => (a.FullName || '').localeCompare(b.FullName || '')));
-                setSentContracts(sentContractsData.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+                // --- CORRECCIÓN: Ordenamiento seguro ---
+                const safeSort = <T extends unknown>(arr: T[], compareFn: (a: T, b: T) => number): T[] => {
+                    try {
+                        return [...arr].sort(compareFn);
+                    } catch (e) {
+                        console.error("Error during sort:", e);
+                        return arr; // Devolver array original si falla
+                    }
+                };
 
-                console.log(">>> Initial Data OK:", { templates: templatesData.length, clients: clientsDataProcessed.length, sent: sentContractsData.length });
+                // Actualiza estados con manejo de errores
+                setTemplates(safeSort(templatesData, (a, b) => 
+                    ((a?.title || "").toLowerCase().localeCompare((b?.title || "").toLowerCase()))
+                ));
+                
+                setClients(safeSort(clientsDataProcessed, (a, b) => 
+                    ((a?.FullName || "").toLowerCase().localeCompare((b?.FullName || "").toLowerCase()))
+                ));
+                
+                setSentContracts(safeSort(sentContractsData, (a, b) => 
+                    (new Date(b?.date || 0).getTime() - new Date(a?.date || 0).getTime())
+                ));
+
+                console.log(">>> Initial Data OK:", { 
+                    templates: templatesData.length, 
+                    clients: clientsDataProcessed.length, 
+                    sent: sentContractsData.length 
+                });
 
             } catch (error: unknown) { // <-- Catch corregido con unknown
                 console.error(">>> Initial Fetch Error:", error);
@@ -306,251 +385,193 @@ const ContractLibrary = () => { // <--- Inicio del componente
 
     }, []); // <-- Array de dependencias vacío para que se ejecute solo una vez al montar
 
-
-        // --- INICIO --- Copia desde aquí
-
-    // --- Placeholder Replacement Logic (con Logs y manejo de tipos y dependencias) ---
-    const applyAllDataToContent = useCallback(() => {
-        console.log('--- applyAllDataToContent START ---'); // Log inicio detallado
-        console.log(`>>> Called from step: ${step}`);
-
-        // 1. Determinar el contenido base
-        let baseContentSource = "Unknown";
-        let baseContent = "";
-
-        // Prioridad 1: Contenido del editor si estamos en el paso 2 y la ref existe
-        if (step === 2 && editorRef.current) {
-            baseContent = editorRef.current.innerHTML;
-            baseContentSource = "editorRef.current.innerHTML";
-            console.log(`>>> Using source: editorRef.current.innerHTML.`);
-        }
-        // Prioridad 2: Estado 'editedContent' si no se usó la ref o estamos fuera del editor
-        // Evitar usar 'editedContent' si ya tomamos de la ref en el paso 2
-        else if (editedContent && baseContentSource !== "editorRef.current.innerHTML") {
-             baseContent = editedContent;
-             baseContentSource = "editedContent state";
-             console.log(`>>> Using source: editedContent state.`);
-        }
-        // Prioridad 3: Contenido original de la plantilla seleccionada
-        else if (selectedContract?.content) {
-            baseContent = selectedContract.content;
-            baseContentSource = "selectedContract.content";
-            console.log(`>>> Using source: selectedContract.content (fallback).`);
-        }
-        // Si NADA funcionó
-        else {
-            baseContentSource = "None";
-            console.log(`>>> CRITICAL: No base content source could be determined.`);
-        }
-
-
-        // --- LOG CLAVE 1: CONTENIDO BASE ANTES DE REEMPLAZAR ---
-        console.log(`>>> Final Source Determined: ${baseContentSource}`);
-        console.log('<<< BASE CONTENT BEFORE REPLACE >>>:', baseContent); // <-- LOG IMPORTANTE
-        // Loguear si está vacío ANTES de retornar
-        if (!baseContent || !baseContent.trim()) {
-            console.warn(">>> BASE CONTENT IS EMPTY OR WHITESPACE! Returning empty string.");
-            return ""; // Retorna vacío si no hay base
-        }
-        // ---------------------------------------------------------
-
-        // Declare updatedContent here to make it accessible throughout the function
-        let updatedContent = baseContent; // Iniciar con el contenido base
-
-        // --- 2. Reemplazar Datos Generales ---
-        try {
-            console.log('--- Replacing General Data ---', generalData); // Log datos generales
-            // Use the already declared updatedContent
-            updatedContent = updatedContent.replace(/\[Jurisdiccion\]/gi, generalData.jurisdiction || "");
-            updatedContent = updatedContent.replace(/\[Fecha\]/gi, generalData.fecha || "");
-            updatedContent = updatedContent.replace(/\[trackTitle\]/gi, generalData.trackTitle || "");
-            updatedContent = updatedContent.replace(/\[LugarDeFirma\]/gi, generalData.lugarDeFirma || "");
-            updatedContent = updatedContent.replace(/\[AreaArtistica\]/gi, generalData.areaArtistica || "");
-            updatedContent = updatedContent.replace(/\[DuracionContrato\]/gi, generalData.duracionContrato || "");
-            updatedContent = updatedContent.replace(/\[PeriodoAviso\]/gi, generalData.periodoAviso || "");
-             // AÑADE AQUÍ CUALQUIER OTRO PLACEHOLDER GENERAL QUE USES
-             // Ejemplo: updatedContent = updatedContent.replace(/\[NombreEmpresa\]/gi, "Mi Empresa S.L." || "");
-            // LÍNEA CORREGIDA:
-updatedContent = updatedContent.replace(
-    /\[PorcentajeComision\]/gi,
-    String(generalData.porcentajeComision || "0") // Cambiado de ?? a || para manejar strings vacías
-);
-
-        } catch (error: unknown) { console.error("Error replacing general placeholders:", error); }
-
-        // --- 3. Reemplazar Datos de Participantes ---
-        const participantReplacements: { [placeholder: string]: string } = {};
-        if (selectedParticipants.length > 0 && clients.length > 0) {
-            console.log('--- Replacing Participant Data ---', { selectedParticipants, participantPercentages }); // Log datos participantes
-            selectedParticipants.forEach((email) => {
-                const client = clients.find((c) => c.email === email);
-                const percentageStr = (participantPercentages[email] || 0).toFixed(2);
-                if (client) {
-                    // Define TODOS los placeholders posibles para un cliente
-                    const clientPlaceholders: Record<string, string | undefined> = {
-                        FullName: client.FullName, Name: client.name, FirstName: client.firstName,
-                        LastName: client.lastName, Email: client.email, Phone: client.phone,
-                        Role: client.role, Passport: client.passport, Address: client.address,
-                        Country: client.country, DOB: client.dateOfBirth, Firma: client.Firma,
-                        Facebook: client.facebook, Instagram: client.instagram, Linkedin: client.linkedin, Twitter: client.twitter,
-                        LabelName: client.labelName, LabelEmail: client.labelEmail, LabelPhone: client.labelPhone, LabelAddress: client.labelAddress, LabelCountry: client.labelCountry,
-                        PublisherName: client.publisherName, PublisherEmail: client.publisherEmail, PublisherPhone: client.publisherPhone, PublisherAddress: client.publisherAddress, PublisherCountry: client.publisherCountry,
-                        PublisherIpi: client.publisherIpi,
-                        Percentage: percentageStr, // El porcentaje calculado
-                        // ...otros placeholders derivados que necesites...
-                    };
-
-                    const rolePrefix = client.role ? client.role.charAt(0).toUpperCase() + client.role.slice(1) : "";
-
-                    Object.entries(clientPlaceholders).forEach(([key, value]) => {
-                         // Solo añadir si el valor no es undefined
-                        if (value !== undefined) {
-                             // Crear placeholder específico del rol (ej. [ArtistFullName])
-                            if (rolePrefix) {
-                                // Evita sobrescribir si ya existe (primer participante con ese rol tiene prioridad)
-                                const specificPlaceholder = `[${rolePrefix}${key}]`;
-                                if (!(specificPlaceholder in participantReplacements)) {
-                                    participantReplacements[specificPlaceholder] = value;
-                                }
-                            }
-                            // Crear placeholder genérico (ej. [FullName]), solo si no existe ya
-                            // para evitar que un rol posterior sobrescriba al primero si hay varios participantes
-                             const genericPlaceholder = `[${key}]`;
-                             if (!(genericPlaceholder in participantReplacements)) {
-                                 participantReplacements[genericPlaceholder] = value;
-                             }
-                        }
-                    });
-
-                    // En la parte donde construyes los placeholders para cada cliente según su rol
-                    // (dentro de la función applyAllDataToContent)
-
-                    // Para el manager/representante
-                    if (client.role === 'Representante' || client.role === 'Manager') {
-                        // Placeholders existentes...
-                        updatedContent = updatedContent.replace(/\[ManagerFullName\]/gi, client.name || "");
-                        updatedContent = updatedContent.replace(/\[ManagerPassport\]/gi, client.passport || "");
-                        updatedContent = updatedContent.replace(/\[ManagerAddress\]/gi, client.address || "");
-                    }
-
-                    // Para el artista
-                    if (client.role === 'Artista') {
-                        // Placeholders existentes...
-                        updatedContent = updatedContent.replace(/\[ArtistFullName\]/gi, client.name || "");
-                        updatedContent = updatedContent.replace(/\[ArtistPassport\]/gi, client.passport || "");
-                        updatedContent = updatedContent.replace(/\[ArtistAddress\]/gi, client.address || "");
-                    }
-                } else {
-                     console.warn(`Client not found for email: ${email} during replacement.`);
-                 }
-            });
-
-            try {
-                 console.log('>>> Generated Participant Replacements:', participantReplacements); // Log para ver qué se va a reemplazar
-                // Ordenar por longitud descendente para reemplazar [ArtistFullName] antes que [FullName]
-                Object.keys(participantReplacements).sort((a, b) => b.length - a.length)
-                    .forEach((placeholder) => {
-                        const replacementValue = participantReplacements[placeholder] ?? ""; // Usar "" si es null/undefined
-                        const escapedPlaceholder = placeholder.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&"); // Escapar caracteres regex
-                        const regex = new RegExp(escapedPlaceholder, "gi"); // Global, case-insensitive
-                        // Log detallado de reemplazo (opcional, puede ser mucho output)
-                        // console.log(`Replacing ${regex} with "${replacementValue.substring(0,30)}..."`);
-                        updatedContent = updatedContent.replace(regex, replacementValue);
-                    });
-            } catch (error: unknown) { console.error("Error replacing participant placeholders:", error); }
-        } else {
-            console.log("--- Skipping participant replacement (no participants selected or no clients loaded).");
-        }
-
-        // Wrap block placeholder replacements in a try block
-        try {
-                // Puedes añadir lógica similar para collaboratorsList si la necesitas
-            
-
-           // Create collaborators list HTML with percentages
-           const collaboratorsList = selectedParticipants.map(email => {
-               const client = clients.find(c => c.email === email);
-               const percentage = participantPercentages[email] || 0;
-               return `<li><strong>${client?.FullName || client?.name || email}</strong>: ${percentage.toFixed(2)}%</li>`;
-           }).join('');
-           
-           const collaboratorListHtml = collaboratorsList ? `<ul>${collaboratorsList}</ul>` : "<p><em>[Lista de Colaboradores no generada]</em></p>"; // Reserva
-           // Create a simpler version without percentages or just reuse the one with percentages
-           const collaboratorListNoPercentHtml = selectedParticipants.map(email => {
-               const client = clients.find(c => c.email === email);
-               return `<li><strong>${client?.FullName || client?.name || email}</strong></li>`;
-           }).join('');
-           
-           // Generate signatures block
-           const signaturesBlock = selectedParticipants.map(email => {
-               const client = clients.find(c => c.email === email);
-               return `<div class="signature-block" style="margin-bottom: 30px;">
-                   <p>${client?.FullName || client?.name || email}</p>
-                   <p>_______________________</p>
-                   <p>${client?.role || 'Participante'}</p>
-               </div>`;
-           }).join('');
-           
-           // Reserva más robusta para firmas
-           const signaturesHtml = signaturesBlock ? `<div style="margin-top: 40px;">${signaturesBlock}</div>` : "<p style='margin-top: 50px; border-top: 1px dashed #ccc; padding-top: 10px;'><em>[Espacio para Firmas]</em></p>";
-
-           // Reemplaza siempre (ahora con reserva si es necesario)
-           updatedContent = updatedContent.replace(/\[ListaColaboradoresConPorcentaje\]/gi, collaboratorListHtml);
-           updatedContent = updatedContent.replace(/\[ListaColaboradores\]/gi, collaboratorListNoPercentHtml);
-           updatedContent = updatedContent.replace(/\[FirmasColaboradores\]/gi, signaturesHtml);
-           updatedContent = updatedContent.replace(/\[Firmas\]/gi, signaturesHtml);
-           console.log("Finished replacing block placeholders (with fallbacks if needed).");
-
-       } catch (error: unknown) { 
-           console.error("Error replacing HTML block placeholders:", error); 
-       }
-
-
-       // --- LOG CLAVE 2: CONTENIDO FINAL DESPUÉS DE REEMPLAZAR ---
-       console.log('<<< FINAL CONTENT AFTER REPLACE >>>:', updatedContent); // <-- LOG IMPORTANTE
-       console.log('--- applyAllDataToContent END ---'); // Log fin detallado
-
-       return updatedContent; // Devolver el contenido modificado (o no)
-
-   // --- Dependencias del useCallback ---
-   // Asegúrate de incluir todas las variables/estados que usas dentro
-   }, [
-       step,
-       editedContent,
-       selectedContract,
-       generalData,
-       selectedParticipants,
-       clients, // Esencial si lees datos de 'clients'
-       participantPercentages
-       // editorRef NO se incluye directamente para evitar re-renders excesivos,
-       // pero su valor se lee al principio de la función.
-   ]);
-
-   // --- FIN --- Copia hasta aquí
-
-    // --- CORRECCIÓN: buildParticipantsPayload ELIMINADO porque no se usa ---
-
-
-    // --- Derived Calculations ---
+    // Definir variables derivadas clave que se usan en múltiples lugares
     const totalPercentage = useMemo(
         () => selectedParticipants.reduce((sum, email) => sum + (participantPercentages[email] || 0), 0),
         [selectedParticipants, participantPercentages]
     );
 
-    const filteredClientsForParticipants = clients.filter(c =>
-        (c.FullName?.toLowerCase() || "").includes(searchQuery.toLowerCase()) ||
-        (c.email?.toLowerCase() || "").includes(searchQuery.toLowerCase()) ||
-        (c.role?.toLowerCase() || "").includes(searchQuery.toLowerCase())
-    );
+    // Función principal para reemplazar placeholders en el contenido del contrato
+    const applyAllDataToContent = useCallback(() => {
+        console.log('--- applyAllDataToContent: INICIO ---'); 
+        // Determinar la fuente del contenido
+        let baseContent = '';
+        
+        // Orden de prioridad para la fuente del contenido
+        if (step === 2 && editorRef.current) {
+            // Prioridad #1: El contenido actual del div editable
+            baseContent = editorRef.current.innerHTML;
+            console.log('>>> Usando HTML del editor (prioridad #1)');
+        } 
+        else if (editedContent) {
+            // Prioridad #2: El estado editedContent
+            baseContent = editedContent;
+            console.log('>>> Usando editedContent (prioridad #2)');
+        }
+        else if (selectedContract?.content) {
+            // Prioridad #3: Contenido original de la plantilla
+            baseContent = selectedContract.content;
+            console.log('>>> Usando plantilla original (prioridad #3)');
+        }
+        else {
+            console.log('>>> CRITICAL: No base content source could be determined.');
+            console.log('>>> Final Source Determined: None');
+            console.log('<<< BASE CONTENT BEFORE REPLACE >>>: ', baseContent);
+            console.log('>>> BASE CONTENT IS EMPTY OR WHITESPACE! Returning empty string.');
+            return '';
+        }
+        
+        // Si llegamos aquí, hay contenido base para procesar
+        let updatedContent = baseContent;
+        
+        // --- REEMPLAZOS DE DATOS GENERALES ---
+        if (generalData) {
+            // Formatear fecha si existe
+            const formattedFecha = generalData.fecha 
+                ? new Date(generalData.fecha + 'T00:00:00').toLocaleDateString('es-ES', {
+                    day: '2-digit', 
+                    month: '2-digit', 
+                    year: 'numeric'
+                }).replace(/\//g, '-')
+                : '';
+                
+            // Aplicar reemplazos de datos generales
+            updatedContent = updatedContent
+                .replace(/\[trackTitle\]/gi, generalData.trackTitle || '')
+                .replace(/\[Fecha\]/gi, formattedFecha)
+                .replace(/\[LugarDeFirma\]/gi, generalData.lugarDeFirma || '')
+                .replace(/\[Jurisdiccion\]/gi, generalData.jurisdiction || '')
+                .replace(/\[AreaArtistica\]/gi, generalData.areaArtistica || '')
+                .replace(/\[PorcentajeComision\]/gi, generalData.porcentajeComision?.toString() || '')
+                .replace(/\[DuracionContrato\]/gi, generalData.duracionContrato || '')
+                .replace(/\[PeriodoAviso\]/gi, generalData.periodoAviso || '');
+        }
+        
+        // --- REEMPLAZOS DE PARTICIPANTES ---
+        // Primero encontrar participantes específicos por rol
+        const manager = clients.find(client => 
+            selectedParticipants.includes(client.email) && 
+            (client.role?.toLowerCase() === 'manager' || client.role?.toLowerCase() === 'representante')
+        );
+        
+        const artist = clients.find(client => 
+            selectedParticipants.includes(client.email) && 
+            (client.role?.toLowerCase() === 'artista' || client.role?.toLowerCase() === 'artist')
+        );
+        
+        // Aplicar datos del manager si existe
+        if (manager) {
+            updatedContent = updatedContent
+                .replace(/\[ManagerFullName\]/gi, manager.FullName || '')
+                .replace(/\[ManagerPassport\]/gi, manager.passport || '')
+                .replace(/\[ManagerAddress\]/gi, manager.address || '')
+                .replace(/\[ManagerEmail\]/gi, manager.email || '')
+                .replace(/\[ManagerPhone\]/gi, manager.phone || '');
+        }
+        
+        // Aplicar datos del artista si existe
+        if (artist) {
+            updatedContent = updatedContent
+                .replace(/\[ArtistFullName\]/gi, artist.FullName || '')
+                .replace(/\[ArtistPassport\]/gi, artist.passport || '')
+                .replace(/\[ArtistAddress\]/gi, artist.address || '')
+                .replace(/\[ArtistEmail\]/gi, artist.email || '')
+                .replace(/\[ArtistPhone\]/gi, artist.phone || '');
+        }
+        
+        // --- REEMPLAZOS GENÉRICOS PARA TODOS LOS PARTICIPANTES ---
+        const selectedClients = clients.filter(client => selectedParticipants.includes(client.email));
+        
+        // Generar bloques HTML dinámicos si existen los marcadores
+        if (updatedContent.includes('[ListaColaboradores]')) {
+            const listaHTML = selectedClients.map(client => 
+                `<li><strong>${client.FullName}</strong> (${client.role || 'Participante'})</li>`
+            ).join('');
+            
+            const listaFinal = listaHTML 
+                ? `<ul>${listaHTML}</ul>` 
+                : '<p><em>No se han seleccionado participantes</em></p>';
+                
+            updatedContent = updatedContent.replace(/\[ListaColaboradores\]/gi, listaFinal);
+        }
+        
+        // Generar lista de colaboradores con porcentaje
+        if (updatedContent.includes('[ListaColaboradoresConPorcentaje]')) {
+            const listaHTML = selectedClients.map(client => {
+                const percent = participantPercentages[client.email] || 0;
+                return `<li><strong>${client.FullName}</strong> (${client.role || 'Participante'}): <strong>${percent}%</strong></li>`;
+            }).join('');
+            
+            const listaFinal = listaHTML 
+                ? `<ul>${listaHTML}</ul>` 
+                : '<p><em>No se han seleccionado participantes</em></p>';
+                
+            updatedContent = updatedContent.replace(/\[ListaColaboradoresConPorcentaje\]/gi, listaFinal);
+        }
+        
+        // Generar bloques de firma
+        if (updatedContent.includes('[Firmas]')) {
+            const firmasHTML = selectedClients.map(client => `
+                <div style="margin-top: 40px; text-align: center;">
+                    <div style="border-bottom: 1px solid #000; height: 50px; width: 200px; margin: 0 auto;"></div>
+                    <p style="margin-top: 5px;"><strong>${client.FullName}</strong><br>${client.role || 'Participante'}</p>
+                </div>
+            `).join('');
+            
+            const firmasFinal = firmasHTML || '<p><em>No se han seleccionado participantes para firmar</em></p>';
+            updatedContent = updatedContent.replace(/\[Firmas\]/gi, firmasFinal);
+        }
+        
+        console.log('--- applyAllDataToContent: FIN ---');
+        return updatedContent;
+    }, [
+        step,
+        editedContent,
+        selectedContract,
+        generalData,
+        selectedParticipants,
+        clients,
+        participantPercentages
+    ]);
+
+    // --- FILTROS ROBUSTOS MEJORADOS ---
+    // Para participantes (ya era robusto pero mejoramos la claridad)
+    const filteredClientsForParticipants = useMemo(() => {
+        // Prevenir fallas si clients es null o undefined
+        if (!clients || !Array.isArray(clients)) return [];
+        
+        const safeSearchQuery = (searchQuery || "").toLowerCase();
+        
+        return clients.filter(c => {
+            // Si el cliente es null o undefined, saltarlo
+            if (!c) return false;
+            
+            // Valores seguros para cada propiedad
+            const fullName = (c.FullName || "").toLowerCase();
+            const email = (c.email || "").toLowerCase();
+            const role = (c.role || "").toLowerCase();
+            
+            return fullName.includes(safeSearchQuery) ||
+                   email.includes(safeSearchQuery) ||
+                   role.includes(safeSearchQuery);
+        });
+    }, [clients, searchQuery]);
+
+    // Para templates (aplicando el mismo nivel de seguridad)
     const filteredTemplates = templates.filter(t =>
-        t.title.toLowerCase().includes(templateSearchQuery.toLowerCase()) ||
-        t.category.toLowerCase().includes(templateSearchQuery.toLowerCase()) ||
-        t.description.toLowerCase().includes(templateSearchQuery.toLowerCase())
+        t && typeof t === 'object' && (
+            ((t.title || "").toLowerCase().includes((templateSearchQuery || "").toLowerCase())) ||
+            ((t.category || "").toLowerCase().includes((templateSearchQuery || "").toLowerCase())) ||
+            ((t.description || "").toLowerCase().includes((templateSearchQuery || "").toLowerCase()))
+        )
     );
-    const isGeneralDataComplete = useMemo(
-        () => !!generalData.jurisdiction && !!generalData.fecha && !!generalData.trackTitle,
-        [generalData]
-    );
+
+    // Otras derivaciones que podrían ser problemáticas
+    const isGeneralDataComplete = useMemo(() => {
+        // Asegurarse de que generalData existe antes de verificar sus propiedades
+        if (!generalData) return false;
+        return !!(generalData.jurisdiction) && !!(generalData.fecha) && !!(generalData.trackTitle);
+    }, [generalData]);
 
     const hasRemainingPlaceholders = useCallback(() => {
         // No hay contrato ni contenido editado? Entonces no hay placeholders.
@@ -1306,7 +1327,7 @@ updatedContent = updatedContent.replace(
                     config: [ {
                             reference: "default-numbering",
                             levels: [ { level: 0, format: "decimal", text: "%1.", alignment: AlignmentType.START, style: { paragraph: { indent: { left: 720, hanging: 360 } } } } ],
-                        }, ],
+                        } ]
                 },
                 styles: {
                     paragraphStyles: [ { id: "IntenseQuote", name: "Intense Quote", basedOn: "Normal", next: "Normal", run: { italics: true, color: "5A5A5A" }, paragraph: { indent: { left: 720 }, spacing: { before: 100, after: 100 } } } ]
@@ -1352,46 +1373,21 @@ updatedContent = updatedContent.replace(
             }
 
             if (format === "pdf") {
-                console.log(">>> Frontend: Requesting PDF generation from backend for title:", title);
-                const response = await fetch('/api/generate-pdf', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', },
-                    body: JSON.stringify({ htmlContent: finalHtmlContent, title: title }),
-                });
-
-                if (!response.ok) {
-                    let errorMsg = `Error del servidor (${response.status})`;
-                    try { const errData = await response.json(); errorMsg = errData.error || errorMsg; }
-                    // --- CORRECCIÓN: Usar 'catch' sin variable ---
-                    catch { /* Ignora si la respuesta de error no es JSON */ } // <-- 'e' removido
-                    console.error(">>> Frontend: PDF generation API error:", response.status, errorMsg);
-                    throw new Error(errorMsg);
-                }
-
-                console.log(">>> Frontend: PDF response OK, processing Blob...");
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                const safeTitle = title.replace(/[^\w\s.-]/g, "").replace(/\s+/g, "_");
-                a.download = `${safeTitle}.pdf`;
-                document.body.appendChild(a);
-                a.click();
-                a.remove();
-                window.URL.revokeObjectURL(url);
-                console.log(">>> Frontend: PDF download triggered for:", a.download);
-
-                toast.success("PDF Descargado", { id: toastId, description: "El archivo se ha generado con formato." });
-
-            } else { // format === "word"
-                console.log(">>> Frontend: Generating Word document locally...");
-                await downloadWordContent(finalHtmlContent, title);
-                 if (document.getElementById(String(toastId))) {
+                // Usar siempre la generación cliente con jsPDF en lugar de la API del servidor
+                console.log(">>> Generating PDF locally with jsPDF for:", title);
+                await downloadPdfContent(finalHtmlContent, title);
+                if (document.getElementById(String(toastId))) {
                     toast.dismiss(toastId);
-                 }
+                }
+            } else { // format === "word"
+                console.log(">>> Generating Word document locally...");
+                await downloadWordContent(finalHtmlContent, title);
+                if (document.getElementById(String(toastId))) {
+                    toast.dismiss(toastId);
+                }
             }
         } catch (error: unknown) {
-            console.error(`>>> Frontend: Error generating ${format}:`, error);
+            console.error(`>>> Error generating ${format}:`, error);
             const message = error instanceof Error ? error.message : String(error); // Safe error message access
             toast.error(`Error al generar ${format}`, { id: toastId, description: message });
         } finally {
@@ -1879,33 +1875,94 @@ updatedContent = updatedContent.replace(
     // --- Send Contract ---
     const handleSendContract = async () => {
         console.log("--- handleSendContract START ---");
-        // ... (validaciones existentes: selectedContract, participants, percentage, generalData) ...
-
-        // --- RECALCULAR Y LOGUEAR finalContent ---
-        let currentFinalContent = "";
-        try {
-            currentFinalContent = applyAllDataToContent(); // Llama a la función que genera el contenido
-            console.log(">>> [handleSendContract] Final Content JUST BEFORE SEND:", currentFinalContent);
-            if (!currentFinalContent || !currentFinalContent.trim()) {
-                 toast.error("Error Interno", { description: "El contenido final del contrato está vacío. Intenta actualizar." });
-                 console.error(">>> [handleSendContract] ABORTING: Final content is empty.");
-                 return; // No continuar si está vacío
-            }
-            // Opcional: Re-validar placeholders aquí si es necesario
-            if (hasRemainingPlaceholders()) { // La función internamente llama a applyAllDataToContent()
-                 toast.error("Error Interno", { description: "Aún quedan placeholders críticos. Intenta actualizar." });
-                 console.error(">>> [handleSendContract] ABORTING: Critical placeholders remain in final content.");
-                 return;
-            }
-
-        } catch (error) {
-            console.error(">>> [handleSendContract] Error generating final content:", error);
-            toast.error("Error Interno", { description: "No se pudo generar el contenido final para enviar." });
+        
+        // Validaciones explícitas
+        if (!selectedContract) {
+            toast.error("Selecciona Contrato", { description: "No se puede enviar sin una plantilla seleccionada." });
             return;
         }
-        // --- FIN RECALCULAR Y LOGUEAR ---
+        if (selectedParticipants.length === 0) {
+            toast.error("Sin Participantes", { description: "Selecciona al menos un participante." });
+            return;
+        }
+        if (Math.abs(totalPercentage - 100) >= 0.01) {
+            toast.error("Porcentajes Incorrectos", { description: "Los porcentajes deben sumar 100%." });
+            return;
+        }
+        if (!isGeneralDataComplete) {
+            toast.error("Datos Incompletos", { description: "Completa todos los datos generales requeridos." });
+            return;
+        }
+        
+        // --- PUNTO CRÍTICO: Obtener contenido de forma confiable --- 
+        let currentFinalContent = "";
+        
+        try {
+            // 1. Primera opción: Obtener directamente del editor (más confiable)
+            if (editorRef.current && editorRef.current.innerHTML.trim()) {
+                currentFinalContent = editorRef.current.innerHTML;
+                console.log(">>> [handleSendContract] Usando contenido del editor (innerHTML)");
+            } 
+            // 2. Segunda opción: Usar el estado editedContent
+            else if (editedContent && editedContent.trim()) {
+                currentFinalContent = editedContent;
+                console.log(">>> [handleSendContract] Usando contenido del estado editedContent");
+            }
+            // 3. Tercera opción: Usar el contenido de la plantilla original
+            else if (selectedContract?.content && selectedContract.content.trim()) {
+                currentFinalContent = selectedContract.content;
+                console.log(">>> [handleSendContract] Usando contenido de la plantilla original");
+            }
+            // 4. Si todo falla, mostrar error
+            else {
+                toast.error("Error Interno", { description: "No hay contenido disponible para enviar. Intenta recargar la página." });
+                console.error(">>> [handleSendContract] ABORTING: No content source available");
+                return;
+            }
+            
+            // --- Aplicar reemplazos manualmente por si acaso applyAllDataToContent falla ---
+            console.log(">>> [handleSendContract] Intentando aplicar reemplazos al contenido");
+            
+            // Intentar usar la función normal
+            const processedContent = applyAllDataToContent();
+            
+            // Si la función dio un resultado válido, usarlo
+            if (processedContent && processedContent.trim()) {
+                currentFinalContent = processedContent;
+                console.log(">>> [handleSendContract] Usando contenido procesado por applyAllDataToContent");
+            } 
+            // Si falló, aplicar reemplazos básicos manualmente
+            else {
+                console.warn(">>> [handleSendContract] applyAllDataToContent falló, aplicando reemplazos básicos manualmente");
+                
+                // Reemplazar datos generales básicos
+                const formattedFecha = generalData.fecha 
+                    ? new Date(generalData.fecha + 'T00:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }) 
+                    : "FECHA PENDIENTE";
+                
+                currentFinalContent = currentFinalContent.replace(/\[trackTitle\]/gi, generalData.trackTitle || "TÍTULO PENDIENTE");
+                currentFinalContent = currentFinalContent.replace(/\[Fecha\]/gi, formattedFecha);
+                currentFinalContent = currentFinalContent.replace(/\[LugarDeFirma\]/gi, generalData.lugarDeFirma || "");
+                currentFinalContent = currentFinalContent.replace(/\[Jurisdiccion\]/gi, generalData.jurisdiction || "");
+                
+                // Más reemplazos básicos si son necesarios
+            }
+            
+            console.log(`>>> [handleSendContract] Final Content JUST BEFORE SEND: ${currentFinalContent.substring(0, 100)}...`);
+            
+            if (!currentFinalContent || !currentFinalContent.trim()) {
+                toast.error("Error Interno", { description: "El contenido final del contrato está vacío. Intenta actualizar manualmente." });
+                console.error(">>> [handleSendContract] ABORTING: Final content is empty after processing.");
+                return;
+            }
+            
+        } catch (error) {
+            console.error(">>> [handleSendContract] Error en preparación del contenido:", error);
+            toast.error("Error Interno", { description: "Error al procesar el contrato para enviar." });
+            return;
+        }
 
-        // Llamar a proceedWithSend con el contenido recién calculado
+        // Llamar a proceedWithSend con el contenido asegurado
         await proceedWithSend(currentFinalContent);
 
         console.log("--- handleSendContract END ---");
@@ -2048,7 +2105,7 @@ updatedContent = updatedContent.replace(
 
              const fechaMatch = text.match(/(?:Fecha:|a\s+)(\[?(\d{1,2}[-\/.]\d{1,2}[-\/.]\d{2,4}|\d{4}[-\/.]\d{1,2}[-\/.]\d{1,2})\]?)/i);
              const fecha = fechaMatch?.[2]?.replace(/[[\]]/g, '');
-             const trackMatch = text.match(/(?:titulada|obra musical|track|canción)\s+["“'](\[?.*?\]?)["”']/i);
+             const trackMatch = text.match(/(?:titulada|obra musical|track|canción)\s+[""'](\[?.*?\]?)["""]/i);
              const track = trackMatch?.[1]?.replace(/[[\]]/g, '');
              const lugarMatch = text.match(/(?:En\s+|Lugar:\s*)(\[?[\w\sÁÉÍÓÚáéíóúñÑ,\s]+\]?)(?=\s*,?\s*(?:a\s+|en\s+)?\[?Fecha|Jurisdic]|\(?en adelante\)?)/i);
              const lugar = lugarMatch?.[1]?.replace(/[[\]]/g, '').trim();
@@ -2059,6 +2116,7 @@ updatedContent = updatedContent.replace(
 
              // Update state only if values were found and are not already set
              setGeneralData((prev) => ({
+                 template_id: prev.template_id, // Añadir el campo template_id que falta
                  jurisdiction: !prev.jurisdiction && juris ? juris : prev.jurisdiction,
                  fecha: !prev.fecha && fecha ? fecha : prev.fecha,
                  trackTitle: !prev.trackTitle && track ? track : prev.trackTitle,
@@ -2066,7 +2124,8 @@ updatedContent = updatedContent.replace(
                  // Preserve existing non-extracted fields
                  areaArtistica: prev.areaArtistica,
                  duracionContrato: prev.duracionContrato,
-                 periodoAviso: prev.periodoAviso
+                 periodoAviso: prev.periodoAviso,
+                 porcentajeComision: prev.porcentajeComision // También mantener porcentajeComision
              }));
          } catch (error) {
              console.error("Error extracting general data from template:", error);
@@ -2242,6 +2301,14 @@ updatedContent = updatedContent.replace(
         aria-current={step === 2 ? "page" : undefined} // <--- CONDICIÓN SIMPLIFICADA
     >
         <Edit2 size={14} className="mr-1" /> Editor
+    </Button>
+    <Button
+        size="sm"
+        variant={step === 3 ? 'secondary' : 'ghost'}
+        onClick={() => setStep(3)}
+        aria-current={step === 3 ? "page" : undefined}
+    >
+        <FileText size={14} className="mr-1" /> Contratos Enviados
     </Button>
             </nav>
             </header>
@@ -2653,11 +2720,7 @@ className="flex flex-col md:flex-row gap-4 lg:gap-6 flex-grow min-h-0 overflow-h
                            </div>
                            {/* Periodo Aviso */}
                            <div>
-                               <Input id="sg-duracion" type="text" placeholder="Ej: 1 año" value={generalData.duracionContrato || ""} onChange={(e) => setGeneralData(p => ({ ...p, duracionContrato: e.target.value }))} className="w-full text-sm h-9" disabled={isSubmitting || isSending || isFinalizingWithAI}/>
-                           </div>
-                           {/* Periodo Aviso */}
-                           <div>
-                               <Label htmlFor="sg-aviso" className="mb-1 block text-xs">Periodo Aviso</Label>
+                               <Label htmlFor="sg-aviso" className="mb-1 block text-xs\">Periodo Aviso</Label>
                                <Input id="sg-aviso" type="text" placeholder="Ej: 30 días" value={generalData.periodoAviso || ""} onChange={(e) => setGeneralData(p => ({ ...p, periodoAviso: e.target.value }))} className="w-full text-sm h-9" disabled={isSubmitting || isSending || isFinalizingWithAI}/>
                            </div>
                            {/* Porcentaje Comisión */}
@@ -2697,6 +2760,62 @@ className="flex flex-col md:flex-row gap-4 lg:gap-6 flex-grow min-h-0 overflow-h
   {/* --- FIN --- */}
 
 {/* --- FIN --- Copia hasta aquí --- */}
+
+                    {/* --- Step 3: Sent Contracts View --- */}
+                    {step === 3 && (
+                      <motion.div 
+                        key="sent-contracts"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        transition={{ duration: 0.3 }}
+                        className="flex flex-col gap-6 max-w-5xl mx-auto"
+                      >
+                        <div className="flex flex-col gap-6">
+                          <div className="flex items-center justify-center md:justify-between">
+                            <h2 className="text-2xl font-bold">Contratos Enviados</h2>
+                            <div className="hidden md:flex gap-2">
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                onClick={goToHome}
+                              >
+                                <Library size={16} className="mr-2" />
+                                Regresar a Biblioteca
+                              </Button>
+                            </div>
+                          </div>
+                          
+                          <SentContractsList
+                            contracts={sentContracts}
+                            onRefresh={async () => {
+                              setIsLoading(true);
+                              try {
+                                const response = await fetch('/api/contracts');
+                                if (response.ok) {
+                                  const data = await response.json();
+                                  setSentContracts(data.sort((a: SentContract, b: SentContract) => 
+                                    new Date(b.date).getTime() - new Date(a.date).getTime()
+                                  ));
+                                } else {
+                                  toast.error("Error actualizando contratos", { 
+                                    description: "No se pudieron cargar los contratos enviados" 
+                                  });
+                                }
+                              } catch (error) {
+                                console.error("Error refreshing contracts:", error);
+                                toast.error("Error de conexión", { 
+                                  description: "No se pudo conectar con el servidor" 
+                                });
+                              } finally {
+                                setIsLoading(false);
+                              }
+                            }}
+                            isLoading={isLoading}
+                          />
+                        </div>
+                      </motion.div>
+                    )}
 
                     {/* --- Step 5: Signed View (Placeholder) --- */}
                     {step === 5 && (
@@ -3150,6 +3269,30 @@ className="flex flex-col md:flex-row gap-4 lg:gap-6 flex-grow min-h-0 overflow-h
                        </DialogFooter>
                   </DialogContent>
              </Dialog>
+
+            {/* General Data Modal */}
+            <CreateContractModal
+                isOpen={showGeneralDataModal}
+                onClose={() => setShowGeneralDataModal(false)}
+                onSubmit={async (data) => {
+                    setGeneralData(data);
+                    setShowGeneralDataModal(false);
+                    
+                    // Actualizar el contenido en el editor si estamos en paso 2
+                    if (step === 2 && editorRef.current) {
+                        try {
+                            const updatedContent = applyAllDataToContent();
+                            setEditedContent(updatedContent);
+                            editorRef.current.innerHTML = updatedContent;
+                            toast.success("Datos generales actualizados");
+                        } catch (error) {
+                            console.error("Error actualizando contenido:", error);
+                            toast.error("Error al aplicar los datos generales");
+                        }
+                    }
+                }}
+                initialData={generalData}
+            />
 
         </div> // End Root Div
     );

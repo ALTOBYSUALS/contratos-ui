@@ -1,9 +1,10 @@
-import puppeteer, { Browser } from 'puppeteer';
+import puppeteer from 'puppeteer-core';
+import chromium from '@sparticuz/chromium';
 import { PDFGenerationError, withRetry } from '../lib/error-handling';
 import { config } from '../lib/config';
 
 // Cache del navegador para reutilizarlo entre invocaciones
-let browserInstance: Browser | null = null;
+let browserInstance: any = null;
 
 /**
  * Opciones para la generación de PDF
@@ -28,53 +29,141 @@ export interface PdfGenerationOptions {
  * Obtiene una instancia de navegador Puppeteer
  * Reutiliza la instancia si es posible, o crea una nueva
  */
-async function getBrowser(): Promise<Browser> {
+async function getBrowser(): Promise<any> {
   if (browserInstance && browserInstance.isConnected()) {
     return browserInstance;
   }
   
+  // Declare execPath at the top level of the function so it's accessible throughout
+  let execPath: string | null = null;
+  
   try {
     console.debug('Launching Puppeteer browser instance');
     
-    // Optimizaciones para serverless
-    const launchOptions = {
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--disable-gpu',
-        '--font-render-hinting=none', // Ayuda con problemas de fuentes
-        '--disable-web-security',
-        '--disable-features=IsolateOrigins',
-        '--disable-site-isolation-trials',
-      ],
-      headless: true
+    // Log environment variables that might affect browser selection
+    console.debug('Environment variables check:', {
+      puppeteerProduct: process.env.PUPPETEER_PRODUCT || 'Not set',
+      nodeEnv: process.env.NODE_ENV,
+      vercelEnv: process.env.VERCEL_ENV,
+      platform: process.platform
+    });
+    
+    // Intenta obtener la ruta ejecutable
+    try {
+      execPath = await chromium.executablePath();
+      console.debug(`Chromium executable path: ${execPath || 'null'}`);
+    } catch (pathError) {
+      console.error('Error getting chromium executable path:', pathError);
+      execPath = null;
+    }
+    
+    // Configuración específica para Vercel
+    // En Vercel, usa una configuración más simple y robusta
+    if (process.env.VERCEL || process.env.VERCEL_ENV) {
+      console.log('Detected Vercel environment, using simplified configuration');
+      
+      // Configuración simplificada para Vercel
+      const launchOptions = {
+        args: [...chromium.args, '--no-sandbox'],
+        executablePath: execPath,
+        headless: true,
+        ignoreHTTPSErrors: true
+      };
+      
+      try {
+        browserInstance = await puppeteer.launch(launchOptions);
+        return browserInstance;
+      } catch (vercelError) {
+        console.error('Error launching browser in Vercel:', vercelError);
+        throw new PDFGenerationError(`Vercel browser launch error: ${vercelError instanceof Error ? vercelError.message : String(vercelError)}`);
+      }
+    }
+    
+    // Determinar el executable path con fallbacks para otros entornos
+    if (!execPath) {
+      console.warn('Chromium path is null, trying fallbacks');
+      
+      // Fallbacks específicos para cada plataforma
+      if (process.platform === 'darwin') { // macOS
+        const macOSPaths = [
+          '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+          '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary',
+          '/Applications/Chromium.app/Contents/MacOS/Chromium',
+          `${process.env.HOME}/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`,
+        ];
+        
+        for (const path of macOSPaths) {
+          if (require('fs').existsSync(path)) {
+            execPath = path;
+            console.debug(`Found Chrome at macOS path: ${path}`);
+            break;
+          }
+        }
+      } else if (process.platform === 'win32') { // Windows
+        execPath = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+        if (!require('fs').existsSync(execPath)) {
+          execPath = 'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe';
+        }
+      } else { // Linux
+        const possiblePaths = [
+          '/usr/bin/google-chrome',
+          '/usr/bin/chromium-browser',
+          '/usr/bin/chromium',
+        ];
+        for (const path of possiblePaths) {
+          if (require('fs').existsSync(path)) {
+            execPath = path;
+            break;
+          }
+        }
+      }
+    }
+    
+    if (!execPath) {
+      throw new Error('Could not determine a valid path for the Chrome executable');
+    }
+    
+    // Opciones de lanzamiento específicas según la plataforma
+    const launchOptions: any = {
+      args: [...chromium.args, '--no-sandbox', '--disable-setuid-sandbox'], 
+      defaultViewport: chromium.defaultViewport,
+      executablePath: execPath,
+      headless: true,
+      ignoreHTTPSErrors: true,
     };
     
-    const browser = await puppeteer.launch(launchOptions);
+    console.debug('Puppeteer launch options:', JSON.stringify(launchOptions, null, 2));
     
-    // En entornos serverless, es posible que necesitemos limpiar el recurso automáticamente
+    // Lanzar el navegador con manejo de errores
+    browserInstance = await puppeteer.launch(launchOptions);
+    
+    // Configurar limpieza automática
     if (config.nodeEnv === 'production') {
-      // Si estamos en producción, configuramos un cierre después de 5 minutos de inactividad
       setTimeout(() => {
-        if (browserInstance === browser) {
+        if (browserInstance) {
           console.debug('Closing idle browser instance after timeout');
+          const tempInstance = browserInstance;
           browserInstance = null;
-          browser.close().catch(err => 
-            console.error('Error closing idle browser', err)
-          );
+          tempInstance.close().catch((err: Error) => console.error('Error closing idle browser', err));
         }
       }, 5 * 60 * 1000);
     }
     
-    browserInstance = browser;
-    return browser;
+    return browserInstance;
   } catch (error) {
     console.error('Failed to launch Puppeteer browser', error);
-    throw new PDFGenerationError(`Failed to launch browser: ${error instanceof Error ? error.message : String(error)}`);
+    
+    const errorInfo = {
+      message: error instanceof Error ? error.message : String(error),
+      env: process.env.NODE_ENV,
+      platform: process.platform,
+      puppeteerProduct: process.env.PUPPETEER_PRODUCT || 'Not set',
+      chromiumPath: execPath || 'Not available'
+    };
+    
+    console.error('Detailed error:', errorInfo);
+    
+    throw new PDFGenerationError(`Failed to launch browser: ${errorInfo.message}`);
   }
 }
 
@@ -96,7 +185,7 @@ export async function generatePdf(
   // Utilizar la función withRetry para manejar reintentos
   return withRetry(
     async () => {
-      let browser: Browser | null = null;
+      let browser: any = null;
       let page = null;
       
       try {
@@ -167,7 +256,7 @@ export async function generatePdf(
       } finally {
         // Cerrar la página si aún está abierta
         if (page) {
-          await page.close().catch(err => 
+          await page.close().catch((err: Error) => 
             console.error('Error cerrando página Puppeteer', err)
           );
         }

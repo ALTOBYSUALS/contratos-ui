@@ -5,6 +5,7 @@ import { PDFDocument } from 'pdf-lib';
 import { put } from '@vercel/blob';
 import { Resend } from 'resend';
 import crypto from 'crypto';
+import { config } from '@/lib/config';
 
 // --- Importar Tipos Centralizados ---
 // ¡ASEGÚRATE DE QUE ESTOS TIPOS ESTÉN EXPORTADOS DESDE lib/types.ts!
@@ -22,7 +23,7 @@ import {
 
 // --- Configuración Inicial ---
 const secret = process.env.JWT_SECRET;
-const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
+const blobToken = config.blobStoreToken; // Usar el token desde config
 const baseUrl = process.env.BASE_URL;
 const resendApiKey = process.env.RESEND_API_KEY;
 // const emailFrom = process.env.EMAIL_FROM || 'Contratos MVPX <noreply@resend.dev>';

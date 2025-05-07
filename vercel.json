@@ -2,13 +2,21 @@
     "functions": {
       "app/api/contracts/send-finalized/route.ts": {
         "memory": 1024,
-        "maxDuration": 60,
-        "includeFiles": "node_modules/@sparticuz/chromium-min/**"
+        "maxDuration": 60
       },
       "app/api/generate-pdf/route.ts": {
         "memory": 1024,
-        "maxDuration": 60,
-        "includeFiles": "node_modules/@sparticuz/chromium-min/**"
+        "maxDuration": 60
       }
+    },
+    "build": {
+      "env": {
+        "PUPPETEER_SKIP_CHROMIUM_DOWNLOAD": "true",
+        "PUPPETEER_SKIP_DOWNLOAD": "true"
+      }
+    },
+    "env": {
+      "PUPPETEER_PRODUCT": "chrome",
+      "PUPPETEER_SKIP_CHROMIUM_DOWNLOAD": "true"
     }
   }

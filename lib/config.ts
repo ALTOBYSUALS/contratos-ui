@@ -104,7 +104,7 @@ export function loadConfig(): AppConfig {
     resendApiKey: process.env.RESEND_API_KEY || null,
     
     // Almacenamiento
-    blobStoreToken: process.env.BLOB_STORE_TOKEN || defaultValues.blobStoreToken as string,
+    blobStoreToken: process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_TOKEN || defaultValues.blobStoreToken as string,
     
     // Seguridad
     jwtSecret: process.env.JWT_SECRET || defaultValues.jwtSecret as string,

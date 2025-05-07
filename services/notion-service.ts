@@ -85,6 +85,37 @@ class NotionService {
   private dbSigners: string = '';
   private dbClients: string | null = null;
   
+  // --- MAPA DE PROPIEDADES (Base de Datos de CONTRATOS) ---
+  // !! VERIFICAR ESTOS NOMBRES CON TU BASE DE DATOS DE CONTRATOS REAL !!
+  private readonly CONTRACT_PROPS = {
+    TITLE: "ContractInstanceID",        // Propiedad Title principal
+    STATUS: "Estado",                   // Propiedad Select para el estado
+    PDF_DRAFT_URL: "PDF Borrador URL",    // Propiedad URL para el PDF borrador
+    SEND_DATE: "FechaEnvio",            // Propiedad Date para fecha de envío
+    SIGNERS_RELATION: "Firmantes",          // Propiedad Relation a DB Firmantes
+    TEMPLATE_RELATION: "TemplateUsado",   // Propiedad Relation a DB Plantillas (Opcional)
+    GENERAL_DATA: "Datos Generales",    // Propiedad Rich Text para datos JSON (Opcional)
+    PDF_SIGNED_URL: "PDF Firmado",        // Propiedad URL para PDF firmado final
+    SIGNED_SHA256: "SHA-256 Firmado",   // Propiedad Rich Text para hash SHA-256
+    FINAL_SIGN_DATE: "Fecha Firma Final" // Propiedad Date para fecha de firma final
+  };
+  
+  // --- MAPA DE PROPIEDADES (Base de Datos de FIRMANTES) ---
+  // !! DEFINICIÓN ACTUALIZADA BASADA EN LA CONFIGURACIÓN REAL DE NOTION !!
+  private readonly PROPERTY_MAP = {
+    // Nombres de propiedades exactamente como aparecen en Notion (DB Firmantes)
+    titleField: "Nombre Firmante (Title)",
+    emailField: "Email (Email)",
+    relationField: "Contrato Relacionado",
+    dateField: "Fecha Firma (Date)",
+    statusField: "Estado Firma (Select)",
+    pageNumberField: "Página Firma (Number)",
+    posXField: "Pos X Firma (Number)",
+    posYField: "Pos Y Firma (Number)",
+    widthField: "Ancho Firma (Number)",
+    heightField: "Alto Firma (Number)"
+  };
+  
   // Inicialización perezosa
   constructor() {
     this.init();
@@ -335,22 +366,22 @@ class NotionService {
       async () => {
         logger.info(`Creando contrato en Notion: ${contractData.title}`);
         
-        // Propiedades Base del Contrato
+        // Propiedades Base del Contrato usando CONTRACT_PROPS
         const properties: Record<string, any> = {
-          "ContractInstanceID": { title: [{ text: { content: contractData.title } }] },
-          "Estado": { select: { name: "EnviadoParaFirma" } },
-          "PDF Borrador URL": { url: contractData.pdfUrl_draft },
-          "FechaEnvio": { date: { start: new Date().toISOString().split("T")[0] } },
-          "Firmantes": { relation: participantSignerIds.map(id => ({ id })) },
+          [this.CONTRACT_PROPS.TITLE]: { title: [{ text: { content: contractData.title } }] },
+          [this.CONTRACT_PROPS.STATUS]: { select: { name: "EnviadoParaFirma" } },
+          [this.CONTRACT_PROPS.PDF_DRAFT_URL]: { url: contractData.pdfUrl_draft },
+          [this.CONTRACT_PROPS.SEND_DATE]: { date: { start: new Date().toISOString().split("T")[0] } },
+          [this.CONTRACT_PROPS.SIGNERS_RELATION]: { relation: participantSignerIds.map(id => ({ id })) },
         };
 
-        // Propiedades Opcionales
+        // Propiedades Opcionales usando CONTRACT_PROPS
         if (contractData.templateId) {
-          properties["TemplateUsado"] = { relation: [{ id: String(contractData.templateId) }] };
+          properties[this.CONTRACT_PROPS.TEMPLATE_RELATION] = { relation: [{ id: String(contractData.templateId) }] };
         }
         
         if (contractData.generalData) {
-          properties["Datos Generales"] = { rich_text: [{ text: { content: JSON.stringify(contractData.generalData, null, 2) } }] };
+          properties[this.CONTRACT_PROPS.GENERAL_DATA] = { rich_text: [{ text: { content: JSON.stringify(contractData.generalData, null, 2) } }] };
         }
 
         // Crear la Página
@@ -371,6 +402,7 @@ class NotionService {
    * enlazándolo al contrato especificado.
    */
   public async createNotionSigner(signerData: SignerDataInput): Promise<{ id: string } | null> {
+    // Continuamos permitiendo PENDING como valor temporal
     if (!signerData.contractPageId) {
       throw new NotionError('Se requiere contractPageId para crear un firmante', 400);
     }
@@ -379,17 +411,36 @@ class NotionService {
       async () => {
         logger.info(`Creando firmante en Notion: ${signerData.name} (${signerData.email}) para contrato ${signerData.contractPageId}`);
         
+        // Debug Schema (opcional, útil si falla)
+        // try {
+        //   const dbSchema = await this.client!.databases.retrieve({ database_id: this.dbSigners });
+        //   logger.info(`DB Schema for signers: ${JSON.stringify(dbSchema.properties)}`);
+        // } catch (e) {
+        //   logger.error(`Error fetching DB schema: ${e}`);
+        // }
+        
+        // Usar PROPERTY_MAP para los nombres
         const properties: Record<string, any> = {
-          "Nombre Firmante": { title: [{ text: { content: signerData.name } }] },
-          "Email": { email: signerData.email },
-          "Contrato Relacionado": { relation: [{ id: signerData.contractPageId }] },
-          "Fecha Firma": { date: null },
-          "Página Firma": { number: signerData.pageNumber },
-          "Pos X Firma": { number: signerData.posX },
-          "Pos Y Firma": { number: signerData.posY },
-          "Ancho Firma": { number: signerData.signatureWidth },
-          "Alto Firma": { number: signerData.signatureHeight },
+          [this.PROPERTY_MAP.titleField]: { title: [{ text: { content: signerData.name } }] },
+          [this.PROPERTY_MAP.emailField]: { email: signerData.email },
+          [this.PROPERTY_MAP.pageNumberField]: { number: signerData.pageNumber },
+          [this.PROPERTY_MAP.posXField]: { number: signerData.posX },
+          [this.PROPERTY_MAP.posYField]: { number: signerData.posY },
+          [this.PROPERTY_MAP.widthField]: { number: signerData.signatureWidth },
+          [this.PROPERTY_MAP.heightField]: { number: signerData.signatureHeight },
         };
+        
+        // Manejar relación inicial si no es PENDING
+        if (signerData.contractPageId !== "PENDING") {
+          // Usar PROPERTY_MAP para la relación
+          properties[this.PROPERTY_MAP.relationField] = { 
+             relation: [{ id: signerData.contractPageId }] 
+          };
+        }
+        // else {
+           // Si es PENDING, NO establecer la relación aquí, se hará después con updateSignerContractRelation
+        // }
+
 
         const signerPage = await this.client!.pages.create({
           parent: { database_id: this.dbSigners },
@@ -415,7 +466,7 @@ class NotionService {
           database_id: this.dbContracts,
           sorts: [
             {
-              property: 'FechaEnvio',
+              property: this.CONTRACT_PROPS.SEND_DATE, // Usar CONTRACT_PROPS
               direction: 'descending',
             },
           ],
@@ -429,9 +480,9 @@ class NotionService {
 
         const contracts = results.map((page): SentContract | null => {
           try {
-            const title = this.getTitlePlainText(this.getProp(page, 'ContractInstanceID')) ?? 'Contrato sin Título';
-            const status = this.getSelectName(this.getProp(page, 'Estado')) ?? 'Desconocido';
-            const dateProp = this.getNotionDate(this.getProp(page, 'FechaEnvio'));
+            const title = this.getTitlePlainText(this.getProp(page, this.CONTRACT_PROPS.TITLE)) ?? 'Contrato sin Título'; // Usar CONTRACT_PROPS
+            const status = this.getSelectName(this.getProp(page, this.CONTRACT_PROPS.STATUS)) ?? 'Desconocido'; // Usar CONTRACT_PROPS
+            const dateProp = this.getNotionDate(this.getProp(page, this.CONTRACT_PROPS.SEND_DATE)); // Usar CONTRACT_PROPS
             const sentDate = dateProp?.start || page.created_time;
 
             const simplifiedParticipants: SentContract['participants'] = [];
@@ -485,10 +536,10 @@ class NotionService {
         
         const signerProps = signerPage.properties as any;
 
-        // 2. Validar Relación y Obtener ID Contrato
-        const relatedContractIds = this.getRelationIds(signerProps['Contrato Relacionado']);
+        // 2. Validar Relación (usa PROPERTY_MAP)
+        const relatedContractIds = this.getRelationIds(signerProps[this.PROPERTY_MAP.relationField]);
         if (!relatedContractIds.includes(contractId)) {
-          logger.error(`Error Seguridad: Firmante ${signerId} no está relacionado con contrato ${contractId}. Relacionado con: ${relatedContractIds.join(', ')}`);
+          logger.error(`Error Seguridad: Firmante ${signerId} no está relacionado con contrato ${contractId} via prop '${this.PROPERTY_MAP.relationField}'. Relacionado con: ${relatedContractIds.join(', ')}`);
           return null;
         }
 
@@ -507,38 +558,39 @@ class NotionService {
         
         const contractProps = contractPage.properties as any;
 
-        // 4. Extraer Datos Clave
-        const draftPdfUrl = this.getNotionUrl(contractProps['PDF Borrador URL']);
-        const signerEmail = this.getEmail(signerProps['Email']);
-        const signedAtDate = this.getNotionDate(signerProps['Fecha Firma']);
+        // 4. Extraer Datos Clave del Contrato (usando CONTRACT_PROPS)
+        const draftPdfUrl = this.getNotionUrl(contractProps[this.CONTRACT_PROPS.PDF_DRAFT_URL]);                                         
+        const contractStatus = this.getSelectName(contractProps[this.CONTRACT_PROPS.STATUS]) ?? 'unknown';
+        const contractTitle = this.getTitlePlainText(contractProps[this.CONTRACT_PROPS.TITLE]) ?? 'Contrato sin Título';
+        const signedPdfUrl = this.getNotionUrl(contractProps[this.CONTRACT_PROPS.PDF_SIGNED_URL]) || null;
+
+        // Obtener datos del firmante usando PROPERTY_MAP
+        const signerEmail = this.getEmail(signerProps[this.PROPERTY_MAP.emailField]);
+        const signerName = this.getTitlePlainText(signerProps[this.PROPERTY_MAP.titleField]) ?? 'Firmante Desconocido';
+        const signedAtDate = this.getNotionDate(signerProps[this.PROPERTY_MAP.dateField]);
         const signedAt = signedAtDate?.start || null;
-        const contractStatus = this.getSelectName(contractProps['Estado']);
-        const contractTitle = this.getTitlePlainText(contractProps['ContractInstanceID']) || 'Contrato sin Título';
-        const signerName = this.getTitlePlainText(signerProps['Nombre Firmante']) || 'Firmante Desconocido';
-        const signedPdfUrl = this.getNotionUrl(contractProps['PDF Firmado']) || null;
-
-        // Validaciones mínimas
-        if (!draftPdfUrl) { 
-          logger.error(`Contrato ${contractId} sin 'PDF Borrador URL'`);
-          return null; 
-        }
         
+        // Validaciones mínimas (usando CONTRACT_PROPS para PDF)
+        if (!draftPdfUrl) { 
+          logger.error(`Contrato ${contractId} sin propiedad URL válida para PDF borrador ('${this.CONTRACT_PROPS.PDF_DRAFT_URL}' verificado).`);
+          return null; 
+        }
         if (!signerEmail) { 
-          logger.error(`Firmante ${signerId} sin 'Email'`);
+          logger.error(`Firmante ${signerId} sin propiedad Email válida ('${this.PROPERTY_MAP.emailField}' verificado).`);
           return null; 
         }
 
-        // 5. Construir Resultado
+        // 5. Construir Resultado (sin cambios significativos aquí, solo usa variables ya extraídas)
         const signerResult: SignerInfo = {
           id: signerPage.id,
           name: signerName,
           email: signerEmail,
           signedAt: signedAt,
-          pageNumber: this.getNotionNumber(signerProps['Página Firma']) ?? 0,
-          posX: this.getNotionNumber(signerProps['Pos X Firma']) ?? 72,
-          posY: this.getNotionNumber(signerProps['Pos Y Firma']) ?? 650,
-          signatureWidth: this.getNotionNumber(signerProps['Ancho Firma']) ?? 150,
-          signatureHeight: this.getNotionNumber(signerProps['Alto Firma']) ?? 60,
+          pageNumber: this.getNotionNumber(signerProps[this.PROPERTY_MAP.pageNumberField]) ?? 1, 
+          posX: this.getNotionNumber(signerProps[this.PROPERTY_MAP.posXField]) ?? 72,
+          posY: this.getNotionNumber(signerProps[this.PROPERTY_MAP.posYField]) ?? 650,
+          signatureWidth: this.getNotionNumber(signerProps[this.PROPERTY_MAP.widthField]) ?? 150,
+          signatureHeight: this.getNotionNumber(signerProps[this.PROPERTY_MAP.heightField]) ?? 60,
         };
         
         const contractResult: ContractInfo = {
@@ -567,13 +619,37 @@ class NotionService {
         await this.client!.pages.update({
           page_id: signerId,
           properties: {
-            'Fecha Firma': { date: { start: data.signedAt.toISOString() } }
+            // Actualiza la fecha de firma
+            [this.PROPERTY_MAP.dateField]: { date: { start: data.signedAt.toISOString() } },
+            // Actualiza también el estado de la firma
+            [this.PROPERTY_MAP.statusField]: { select: { name: "Firmado" } }
           }
         });
         
         logger.info(`Firmante ${signerId} actualizado OK`);
       },
       'updateSignerRecord'
+    );
+  }
+  
+  /**
+   * Actualiza la relación del firmante con el contrato después de crearlo.
+   */
+  public async updateSignerContractRelation(signerId: string, contractId: string): Promise<void> {
+    await this.executeWithRetry(
+      async () => {
+        logger.info(`Actualizando relación del firmante ${signerId} con el contrato ${contractId}`);
+        
+        await this.client!.pages.update({
+          page_id: signerId,
+          properties: {
+            [this.PROPERTY_MAP.relationField]: { relation: [{ id: contractId }] }
+          }
+        });
+        
+        logger.info(`Relación de firmante ${signerId} con contrato ${contractId} actualizada correctamente`);
+      },
+      'updateSignerContractRelation'
     );
   }
   
@@ -594,8 +670,8 @@ class NotionService {
             database_id: this.dbSigners,
             filter: {
               and: [
-                { property: 'Contrato Relacionado', relation: { contains: contractId } },
-                { property: 'Fecha Firma', date: { is_empty: true } }
+                { property: this.PROPERTY_MAP.relationField, relation: { contains: contractId } },
+                { property: this.PROPERTY_MAP.dateField, date: { is_empty: true } }
               ]
             },
             page_size: 100
@@ -630,11 +706,12 @@ class NotionService {
       async () => {
         logger.info(`Actualizando estado final para contrato ${contractId}`);
         
+        // Usar CONTRACT_PROPS
         const properties: Record<string, any> = {
-          'Estado': { select: { name: 'Firmado' } },
-          'PDF Firmado': { url: data.pdfUrl_signed },
-          'SHA-256 Firmado': { rich_text: [{ text: { content: data.sha256 } }] },
-          'Fecha Firma Final': { date: { start: data.signedAt.toISOString().split('T')[0] } }
+          [this.CONTRACT_PROPS.STATUS]: { select: { name: 'Firmado' } },
+          [this.CONTRACT_PROPS.PDF_SIGNED_URL]: { url: data.pdfUrl_signed },
+          [this.CONTRACT_PROPS.SIGNED_SHA256]: { rich_text: [{ text: { content: data.sha256 } }] },
+          [this.CONTRACT_PROPS.FINAL_SIGN_DATE]: { date: { start: data.signedAt.toISOString().split('T')[0] } }
         };
 
         await this.client!.pages.update({
@@ -645,6 +722,135 @@ class NotionService {
         logger.info(`Contrato ${contractId} actualizado a estado final OK`);
       },
       'updateFinalContractStatus'
+    );
+  }
+
+  /**
+   * Obtiene los detalles completos de un contrato, incluyendo sus firmantes.
+   */
+  public async getContractDetails(contractId: string): Promise<{
+    contract: ContractInfo;
+    signers: SignerInfo[];
+    generalData?: any;
+  } | null> {
+    return this.executeWithRetry(
+      async () => {
+        logger.info(`Obteniendo detalles para contrato ${contractId}`);
+        
+        // 1. Obtener la información del contrato
+        let contractPage: PageObjectResponse;
+        try {
+          contractPage = await this.client!.pages.retrieve({ page_id: contractId }) as PageObjectResponse;
+          if (!contractPage?.properties) throw new Error("Respuesta inválida (contrato).");
+        } catch (e: any) { 
+          if (e?.code === 'object_not_found') { 
+            logger.warn(`Contrato ${contractId} no encontrado`);
+          } else { 
+            logger.error(`Error recuperando contrato ${contractId}`, e);
+          } 
+          return null; 
+        }
+        
+        const contractProps = contractPage.properties as any;
+        
+        // 2. Extraer datos del contrato
+        const title = this.getTitlePlainText(this.getProp(contractPage, this.CONTRACT_PROPS.TITLE)) ?? 'Contrato sin Título';
+        const status = this.getSelectName(this.getProp(contractPage, this.CONTRACT_PROPS.STATUS)) ?? 'Desconocido';
+        const dateProp = this.getNotionDate(this.getProp(contractPage, this.CONTRACT_PROPS.SEND_DATE));
+        const sentDate = dateProp?.start || contractPage.created_time;
+        const draftPdfUrl = this.getNotionUrl(contractProps[this.CONTRACT_PROPS.PDF_DRAFT_URL]) ?? null;
+        const signedPdfUrl = this.getNotionUrl(contractProps[this.CONTRACT_PROPS.PDF_SIGNED_URL]) ?? null;
+        
+        // 3. Extraer datos generales (si existen)
+        let generalData = null;
+        try {
+          const generalDataText = this.getRichTextPlainText(this.getProp(contractPage, this.CONTRACT_PROPS.GENERAL_DATA));
+          if (generalDataText) {
+            generalData = JSON.parse(generalDataText);
+          }
+        } catch (e) {
+          logger.warn(`Error parseando datos generales del contrato ${contractId}`, e);
+        }
+        
+        // 4. Obtener IDs de firmantes relacionados
+        const signerIds = this.getRelationIds(contractProps[this.CONTRACT_PROPS.SIGNERS_RELATION]) ?? [];
+        
+        // 5. Si no hay firmantes, devolver solo los datos del contrato
+        if (signerIds.length === 0) {
+          logger.info(`Contrato ${contractId} no tiene firmantes relacionados`);
+          return {
+            contract: {
+              id: contractId,
+              title,
+              pdfUrl_draft: draftPdfUrl,
+              pdfUrl_signed: signedPdfUrl,
+              status
+            },
+            signers: [],
+            generalData
+          };
+        }
+        
+        // 6. Obtener datos de cada firmante
+        logger.info(`Obteniendo datos de ${signerIds.length} firmantes para contrato ${contractId}`);
+        const signersPromises = signerIds.map(async (signerId) => {
+          try {
+            const signerPage = await this.client!.pages.retrieve({ page_id: signerId }) as PageObjectResponse;
+            if (!signerPage?.properties) {
+              logger.warn(`Firmante ${signerId} encontrado pero sin propiedades válidas`);
+              return null;
+            }
+            
+            const signerProps = signerPage.properties as any;
+            
+            // Extraer datos del firmante usando PROPERTY_MAP
+            const name = this.getTitlePlainText(signerProps[this.PROPERTY_MAP.titleField]) ?? 'Firmante Desconocido';
+            const email = this.getEmail(signerProps[this.PROPERTY_MAP.emailField]) ?? '';
+            const signedAtDate = this.getNotionDate(signerProps[this.PROPERTY_MAP.dateField]);
+            const signedAt = signedAtDate?.start || null;
+            const pageNumber = this.getNotionNumber(signerProps[this.PROPERTY_MAP.pageNumberField]) ?? 1;
+            const posX = this.getNotionNumber(signerProps[this.PROPERTY_MAP.posXField]) ?? 0;
+            const posY = this.getNotionNumber(signerProps[this.PROPERTY_MAP.posYField]) ?? 0;
+            const signatureWidth = this.getNotionNumber(signerProps[this.PROPERTY_MAP.widthField]) ?? 150;
+            const signatureHeight = this.getNotionNumber(signerProps[this.PROPERTY_MAP.heightField]) ?? 60;
+            
+            return {
+              id: signerId,
+              name,
+              email,
+              signedAt,
+              pageNumber,
+              posX,
+              posY,
+              signatureWidth,
+              signatureHeight
+            };
+          } catch (e) {
+            logger.error(`Error recuperando datos del firmante ${signerId}`, e);
+            return null;
+          }
+        });
+        
+        // 7. Esperar todas las promesas y filtrar nulos
+        const signersData = await Promise.all(signersPromises);
+        const validSigners = signersData.filter((s): s is SignerInfo => s !== null);
+        
+        logger.info(`Recuperados ${validSigners.length} firmantes válidos para contrato ${contractId}`);
+        
+        // 8. Devolver datos completos
+        return {
+          contract: {
+            id: contractId,
+            title,
+            pdfUrl_draft: draftPdfUrl,
+            pdfUrl_signed: signedPdfUrl,
+            status
+          },
+          signers: validSigners,
+          generalData
+        };
+      },
+      'getContractDetails'
     );
   }
 }
