@@ -56,7 +56,7 @@ const ViewSentContractModal: React.FC<ViewSentContractModalProps> = ({
         setError(null);
         
         try {
-            const response = await fetch(`/api/contracts/${contractId}/details`);
+            const response = await fetch(`/api/public/contracts/${contractId}`);
             
             if (!response.ok) {
                 throw new Error(`Error ${response.status}: ${response.statusText}`);
