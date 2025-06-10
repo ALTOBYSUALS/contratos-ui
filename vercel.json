@@ -1,5 +1,8 @@
 {
     "functions": {
+      "app/api/**/*": {
+        "maxDuration": 30
+      },
       "app/api/contracts/send-finalized/route.ts": {
         "memory": 1024,
         "maxDuration": 60
@@ -17,6 +20,31 @@
     },
     "env": {
       "PUPPETEER_PRODUCT": "chrome",
-      "PUPPETEER_SKIP_CHROMIUM_DOWNLOAD": "true"
-    }
+      "PUPPETEER_SKIP_CHROMIUM_DOWNLOAD": "true",
+      "NODE_ENV": "production"
+    },
+    "crons": [],
+    "buildCommand": "npm run build",
+    "outputDirectory": ".next",
+    "framework": "nextjs",
+    "regions": ["iad1"],
+    "headers": [
+      {
+        "source": "/api/(.*)",
+        "headers": [
+          {
+            "key": "Access-Control-Allow-Origin",
+            "value": "*"
+          },
+          {
+            "key": "Access-Control-Allow-Methods",
+            "value": "GET, POST, PUT, DELETE, OPTIONS"
+          },
+          {
+            "key": "Access-Control-Allow-Headers",
+            "value": "Content-Type, Authorization"
+          }
+        ]
+      }
+    ]
   }
