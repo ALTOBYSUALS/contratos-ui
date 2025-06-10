@@ -2,14 +2,14 @@
 
 "use client";
 
-import React, { useRef, useState, useCallback } from 'react'; // Añadido useEffect y useCallback
+import React, { useRef, useState, useCallback, useEffect } from 'react'; // Añadido useEffect
 import SignatureCanvas from 'react-signature-canvas'; // Para dibujar la firma
 import { Document, Page, pdfjs } from 'react-pdf'; // Para MOSTRAR el PDF
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css'; // Estilos necesarios
 import 'react-pdf/dist/esm/Page/TextLayer.css';      // Estilos necesarios
 import { toast } from "sonner"; // Para notificaciones
 import { Button } from '@/components/ui/button';
-import { Loader2 } from 'lucide-react'; // Icono de carga
+import { Loader2, Smartphone, Monitor } from 'lucide-react'; // Iconos
 import type { SignatureClientProps } from '@/lib/types'; // Importar desde lib
 
 // Configurar worker de pdf.js (necesario para react-pdf)
@@ -31,10 +31,22 @@ export default function SignatureClientComponent({ token, signerName, contractPd
     const [isPdfLoading, setIsPdfLoading] = useState(true); // Para carga del PDF
     const [pdfError, setPdfError] = useState<string | null>(null); // Errores al cargar PDF
     const [signatureIsEmpty, setSignatureIsEmpty] = useState(true); // Para saber si el pad está vacío
+    const [isMobile, setIsMobile] = useState(false); // Detectar móvil
 
     // --- Referencias ---
     const signaturePadRef = useRef<SignatureCanvas>(null);
     const pdfWrapperRef = useRef<HTMLDivElement>(null); // Para ajustar ancho del PDF
+
+    // --- Detectar dispositivo móvil ---
+    useEffect(() => {
+        const checkIsMobile = () => {
+            setIsMobile(window.innerWidth < 768 || 'ontouchstart' in window);
+        };
+        
+        checkIsMobile();
+        window.addEventListener('resize', checkIsMobile);
+        return () => window.removeEventListener('resize', checkIsMobile);
+    }, []);
 
     // --- Handlers para react-pdf ---
     const onDocumentLoadSuccess = useCallback(({ numPages }: { numPages: number }): void => {
@@ -43,6 +55,11 @@ export default function SignatureClientComponent({ token, signerName, contractPd
         setCurrentPage(1); // Ir a la primera página al cargar
         setPdfError(null);
         setIsPdfLoading(false); // Terminar carga PDF
+        
+        // Mostrar mensaje de éxito
+        toast.success("📄 Documento cargado correctamente", { 
+            description: `${numPages} página${numPages > 1 ? 's' : ''} lista${numPages > 1 ? 's' : ''} para revisión` 
+        });
     }, []);
 
     const onDocumentLoadError = useCallback((error: Error): void => {
@@ -50,29 +67,56 @@ export default function SignatureClientComponent({ token, signerName, contractPd
         setPdfError(`Error al cargar PDF: ${error.message}. Verifique la URL o contacte soporte.`);
         setNumPages(null);
         setIsPdfLoading(false); // Terminar carga PDF (con error)
+        
+        // Mostrar error
+        toast.error("❌ Error cargando documento", { 
+            description: "Por favor recarga la página o contacta soporte" 
+        });
     }, []);
 
-    // --- Handlers para Navegación PDF (Opcional) ---
-    const goToPrevPage = () => setCurrentPage(prev => Math.max(prev - 1, 1));
-    const goToNextPage = () => setCurrentPage(prev => Math.min(prev + 1, numPages || 1));
+    // --- Handlers para Navegación PDF (Optimizado para móvil) ---
+    const goToPrevPage = () => {
+        const newPage = Math.max(currentPage - 1, 1);
+        setCurrentPage(newPage);
+        if (isMobile) {
+            toast.info(`📄 Página ${newPage} de ${numPages}`);
+        }
+    };
+    
+    const goToNextPage = () => {
+        const newPage = Math.min(currentPage + 1, numPages || 1);
+        setCurrentPage(newPage);
+        if (isMobile) {
+            toast.info(`📄 Página ${newPage} de ${numPages}`);
+        }
+    };
 
-    // --- Handlers para Firma ---
+    // --- Handlers para Firma (Optimizado para touch) ---
     const handleClearSignature = () => {
         signaturePadRef.current?.clear();
         setSignatureIsEmpty(true); // Marcar como vacío al borrar
+        toast.info("🗑️ Firma borrada");
     };
 
     // Se llama cuando el usuario termina un trazo
     const handleSignatureEnd = () => {
         if (signaturePadRef.current) {
              // Verifica si está vacío después del trazo
-             setSignatureIsEmpty(signaturePadRef.current.isEmpty());
+             const isEmpty = signaturePadRef.current.isEmpty();
+             setSignatureIsEmpty(isEmpty);
+             
+             // Feedback táctil en móvil
+             if (!isEmpty && isMobile && 'vibrate' in navigator) {
+                 navigator.vibrate(50); // Vibración suave
+             }
         }
     };
 
     const handleSaveSignature = async () => {
         if (!signaturePadRef.current || signatureIsEmpty) {
-             toast.warning("Firma requerida", { description: "Por favor, dibuja tu firma en el recuadro." });
+             toast.warning("✍️ Firma requerida", { 
+                 description: "Por favor, dibuja tu firma en el recuadro." 
+             });
              return;
          }
 
@@ -80,7 +124,7 @@ export default function SignatureClientComponent({ token, signerName, contractPd
         const signatureDataUrl = signaturePadRef.current.toDataURL();
 
         setIsLoading(true);
-        toast.info("Guardando firma...");
+        toast.info("💾 Guardando firma...", { description: "No cierres esta ventana" });
 
         try {
             const response = await fetch(`/api/signature/${token}`, { // Usa token en URL
@@ -97,36 +141,56 @@ export default function SignatureClientComponent({ token, signerName, contractPd
             }
 
             console.log("Signature saved successfully:", result);
-            toast.success("¡Firma Guardada!", { description: `Gracias ${signerName}. ${result.message || 'Proceso completado.'}` });
-            // Deshabilitar controles después de guardar exitosamente
-            // Podrías añadir un estado `isSigned` y usarlo en los `disabled` de los botones/canvas
-            // setIsSigned(true);
+            toast.success("🎉 ¡Firma Guardada Exitosamente!", { 
+                description: `Gracias ${signerName}. ${result.message || 'Proceso completado.'}`,
+                duration: 5000
+            });
+            
+            // Vibración de éxito en móvil
+            if (isMobile && 'vibrate' in navigator) {
+                navigator.vibrate([100, 50, 100]); // Patrón de éxito
+            }
 
         } catch (error: unknown) { // Manejo de error seguro
             console.error("Error saving signature:", error);
             let errorMessage = "Error desconocido al guardar la firma.";
             if (error instanceof Error) { errorMessage = error.message; }
             else if (typeof error === 'string') { errorMessage = error; }
-            toast.error("Error al Guardar", { description: errorMessage });
+            toast.error("❌ Error al Guardar", { 
+                description: errorMessage,
+                duration: 6000
+            });
         } finally {
             setIsLoading(false);
         }
     };
-    // ------------------------------------
 
     return (
-        <div className="border rounded-lg p-4 md:p-6 shadow-md bg-white space-y-6 max-w-4xl mx-auto">
-            <p className="text-sm text-gray-700">
-                Firmando como: <span className="font-semibold text-gray-900">{signerName}</span>
-            </p>
+        <div className="border rounded-lg p-3 md:p-6 shadow-md bg-white space-y-4 md:space-y-6 max-w-4xl mx-auto">
+            {/* Header con info del dispositivo */}
+            <div className="flex items-center justify-between">
+                <p className="text-sm text-gray-700">
+                    Firmando como: <span className="font-semibold text-gray-900">{signerName}</span>
+                </p>
+                <div className="flex items-center text-xs text-gray-500">
+                    {isMobile ? <Smartphone className="w-4 h-4 mr-1" /> : <Monitor className="w-4 h-4 mr-1" />}
+                    {isMobile ? 'Móvil' : 'Escritorio'}
+                </div>
+            </div>
 
-            {/* --- Visor de PDF con react-pdf --- */}
+            {/* --- Visor de PDF optimizado --- */}
             <div>
                 <h3 className="text-lg font-medium mb-2 text-gray-800">Documento a Firmar</h3>
-                <div ref={pdfWrapperRef} className="border rounded-md min-h-[500px] md:min-h-[600px] overflow-hidden bg-gray-50 flex flex-col items-center">
-                    {isPdfLoading && <div className="p-10 text-center text-gray-500"><Loader2 className="animate-spin mr-2 inline-block h-5 w-5"/>Cargando documento...</div>}
+                <div ref={pdfWrapperRef} className={`border rounded-md ${isMobile ? 'min-h-[400px]' : 'min-h-[500px] md:min-h-[600px]'} overflow-hidden bg-gray-50 flex flex-col items-center`}>
+                    {isPdfLoading && (
+                        <div className="p-10 text-center text-gray-500">
+                            <Loader2 className="animate-spin mr-2 inline-block h-5 w-5"/>
+                            Cargando documento...
+                            {isMobile && <p className="text-xs mt-2">📱 Optimizado para móvil</p>}
+                        </div>
+                    )}
                     {pdfError && !isPdfLoading && (
-                        <div className="p-10 text-center text-red-600 bg-red-50 rounded m-4">
+                        <div className="p-6 md:p-10 text-center text-red-600 bg-red-50 rounded m-4">
                             <p><strong>Error al cargar el documento:</strong></p>
                             <p className="text-sm mt-1">{pdfError}</p>
                              <p className="text-xs mt-2">Intenta recargar la página o contacta soporte.</p>
@@ -138,76 +202,121 @@ export default function SignatureClientComponent({ token, signerName, contractPd
                             onLoadSuccess={onDocumentLoadSuccess}
                             onLoadError={onDocumentLoadError}
                             loading="" // Ya manejamos el loading arriba
-                            className="flex flex-col items-center overflow-y-auto w-full h-[500px] md:h-[600px]" // Permitir scroll vertical interno
+                            className={`flex flex-col items-center overflow-y-auto w-full ${isMobile ? 'h-[400px]' : 'h-[500px] md:h-[600px]'}`}
                         >
                             <Page
                                 key={`page_${currentPage}`}
                                 pageNumber={currentPage}
-                                // Ajustar ancho dinámicamente al contenedor
-                                width={pdfWrapperRef.current ? pdfWrapperRef.current.getBoundingClientRect().width * 0.98 : undefined}
-                                renderTextLayer={false} // Mejora rendimiento si no necesitas seleccionar texto
-                                renderAnnotationLayer={true} // Mantener por si hay links o campos
+                                // Ajustar ancho dinámicamente - móvil más pequeño
+                                width={pdfWrapperRef.current ? 
+                                    pdfWrapperRef.current.getBoundingClientRect().width * (isMobile ? 0.95 : 0.98) 
+                                    : undefined}
+                                renderTextLayer={false} // Mejora rendimiento
+                                renderAnnotationLayer={true} // Mantener por si hay links
                                 className="mb-2 shadow-sm"
                             />
                         </Document>
                     )}
                 </div>
-                {/* Controles de Paginación PDF */}
+                
+                {/* Controles de Paginación optimizados para móvil */}
                 {!isPdfLoading && !pdfError && numPages && numPages > 1 && (
-                    <div className="flex justify-center items-center gap-4 mt-2 text-sm">
-                        <Button variant="outline" size="sm" onClick={goToPrevPage} disabled={currentPage <= 1}>
-                            Anterior
+                    <div className={`flex justify-center items-center gap-4 mt-2 text-sm ${isMobile ? 'gap-2' : ''}`}>
+                        <Button 
+                            variant="outline" 
+                            size={isMobile ? "sm" : "sm"} 
+                            onClick={goToPrevPage} 
+                            disabled={currentPage <= 1}
+                            className={isMobile ? "px-3 py-1 text-xs" : ""}
+                        >
+                            {isMobile ? "←" : "Anterior"}
                         </Button>
-                        <span>Página {currentPage} de {numPages}</span>
-                        <Button variant="outline" size="sm" onClick={goToNextPage} disabled={currentPage >= numPages}>
-                            Siguiente
+                        <span className={isMobile ? "text-xs font-medium" : ""}>
+                            Página {currentPage} de {numPages}
+                        </span>
+                        <Button 
+                            variant="outline" 
+                            size={isMobile ? "sm" : "sm"} 
+                            onClick={goToNextPage} 
+                            disabled={currentPage >= numPages}
+                            className={isMobile ? "px-3 py-1 text-xs" : ""}
+                        >
+                            {isMobile ? "→" : "Siguiente"}
                         </Button>
                     </div>
                 )}
             </div>
 
-             {/* Sección de Firma */}
+             {/* Sección de Firma optimizada para touch */}
      <div>
          <label htmlFor="signature-pad-canvas" className="block text-lg font-medium mb-2 text-gray-800">
-             Tu Firma (Dibuja en el recuadro)
+             Tu Firma {isMobile ? "(Usa tu dedo)" : "(Dibuja en el recuadro)"}
          </label>
-         {/* Contenedor relativo */}
-         <div className="relative border rounded-md w-full h-[150px] md:h-[200px] cursor-crosshair overflow-hidden">
-             {/* Componente de Firma Real */}
+         <div className="relative border-2 border-dashed border-gray-300 rounded-md w-full h-[120px] md:h-[200px] cursor-crosshair overflow-hidden bg-white">
              <SignatureCanvas
                  ref={signaturePadRef}
                  penColor='black'
-                 canvasProps={{ id: 'signature-pad-canvas', className: `w-full h-full rounded-md bg-white ${isLoading ? 'opacity-50' : ''}` }} // Opcional: cambia opacidad
+                 canvasProps={{ 
+                     id: 'signature-pad-canvas', 
+                     className: `w-full h-full rounded-md bg-white ${isLoading ? 'opacity-50' : ''}`,
+                     style: { touchAction: 'none' } // Mejor control touch
+                 }}
                  onEnd={handleSignatureEnd}
-                 // disabled={isLoading} // <-- ELIMINA ESTA LÍNEA
+                 dotSize={isMobile ? 3 : 2} // Puntos más grandes en móvil
+                 minWidth={isMobile ? 2 : 1} // Líneas más gruesas en móvil
+                 maxWidth={isMobile ? 4 : 3}
              />
-             {/* Div superpuesto para deshabilitar */}
+             {signatureIsEmpty && (
+                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                     <p className="text-gray-400 text-sm">
+                         {isMobile ? "👆 Firma aquí con tu dedo" : "🖱️ Dibuja tu firma aquí"}
+                     </p>
+                 </div>
+             )}
              {isLoading && (
-                 <div className="absolute inset-0 bg-gray-300 bg-opacity-30 cursor-not-allowed z-10" title="Guardando..."></div>
+                 <div className="absolute inset-0 bg-gray-300 bg-opacity-30 cursor-not-allowed z-10 flex items-center justify-center" title="Guardando...">
+                     <Loader2 className="animate-spin h-6 w-6 text-gray-600" />
+                 </div>
              )}
          </div>
+         {!signatureIsEmpty && (
+             <p className="text-xs text-green-600 mt-1 flex items-center">
+                 ✅ Firma lista para enviar
+             </p>
+         )}
      </div>
 
-            {/* --- Botones de Acción --- */}
-            <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-gray-200">
+            {/* --- Botones de Acción optimizados para móvil --- */}
+            <div className={`flex ${isMobile ? 'flex-col gap-3' : 'flex-col sm:flex-row gap-3'} pt-4 border-t border-gray-200`}>
                 <Button
                     variant="outline"
                     onClick={handleClearSignature}
-                    disabled={isLoading} // Deshabilita si está guardando
+                    disabled={isLoading}
+                    className={isMobile ? "w-full py-3" : ""}
                 >
-                    Borrar Firma
+                    🗑️ Borrar Firma
                 </Button>
                 <Button
                     onClick={handleSaveSignature}
-                    disabled={isLoading || signatureIsEmpty} // Deshabilita si está guardando O si no hay firma
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                    disabled={isLoading || signatureIsEmpty}
+                    className={`${isMobile ? 'w-full py-3 text-base' : ''} bg-blue-600 hover:bg-blue-700`}
                 >
                     {isLoading ? (
-                        <> <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Guardando... </>
+                        <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Guardando...
+                        </>
                     ) : (
-                        'Confirmar y Guardar Firma'
+                        <>
+                            ✍️ Confirmar y Firmar Documento
+                        </>
                     )}
                 </Button>
+            </div>
+            
+            {/* Footer informativo */}
+            <div className="text-xs text-gray-500 text-center pt-2 border-t border-gray-100">
+                🔒 Conexión segura • ⏱️ Enlace válido por 7 días • 📱 Optimizado para todos los dispositivos
             </div>
         </div>
     );
