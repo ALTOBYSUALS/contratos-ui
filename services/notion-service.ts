@@ -772,11 +772,24 @@ class NotionService {
           logger.warn(`Error parseando datos generales del contrato ${contractId}`, e);
         }
         
-        // 4. Obtener IDs de firmantes relacionados
-        const signerIds = this.getRelationIds(contractProps[this.CONTRACT_PROPS.SIGNERS_RELATION]) ?? [];
+        // 4. Buscar firmantes relacionados con este contrato en la DB de firmantes
+        logger.info(`Buscando firmantes para contrato ${contractId} en DB de firmantes`);
+        
+        const signersQuery: QueryDatabaseParameters = {
+          database_id: this.dbSigners,
+          filter: {
+            property: this.PROPERTY_MAP.relationField, // "Contrato Relacionado"
+            relation: { contains: contractId }
+          }
+        };
+        
+        const signersResponse = await this.client!.databases.query(signersQuery);
+        const signerPages = signersResponse.results as PageObjectResponse[];
+        
+        logger.info(`Encontrados ${signerPages.length} firmantes para contrato ${contractId}`);
         
         // 5. Si no hay firmantes, devolver solo los datos del contrato
-        if (signerIds.length === 0) {
+        if (signerPages.length === 0) {
           logger.info(`Contrato ${contractId} no tiene firmantes relacionados`);
           return {
             contract: {
@@ -791,16 +804,11 @@ class NotionService {
           };
         }
         
-        // 6. Obtener datos de cada firmante
-        logger.info(`Obteniendo datos de ${signerIds.length} firmantes para contrato ${contractId}`);
-        const signersPromises = signerIds.map(async (signerId) => {
+        // 6. Procesar datos de cada firmante
+        const validSigners: SignerInfo[] = [];
+        
+        for (const signerPage of signerPages) {
           try {
-            const signerPage = await this.client!.pages.retrieve({ page_id: signerId }) as PageObjectResponse;
-            if (!signerPage?.properties) {
-              logger.warn(`Firmante ${signerId} encontrado pero sin propiedades válidas`);
-              return null;
-            }
-            
             const signerProps = signerPage.properties as any;
             
             // Extraer datos del firmante usando PROPERTY_MAP
@@ -814,8 +822,8 @@ class NotionService {
             const signatureWidth = this.getNotionNumber(signerProps[this.PROPERTY_MAP.widthField]) ?? 150;
             const signatureHeight = this.getNotionNumber(signerProps[this.PROPERTY_MAP.heightField]) ?? 60;
             
-            return {
-              id: signerId,
+            validSigners.push({
+              id: signerPage.id,
               name,
               email,
               signedAt,
@@ -824,20 +832,16 @@ class NotionService {
               posY,
               signatureWidth,
               signatureHeight
-            };
+            });
+            
           } catch (e) {
-            logger.error(`Error recuperando datos del firmante ${signerId}`, e);
-            return null;
+            logger.error(`Error procesando firmante ${signerPage.id}`, e);
           }
-        });
+        }
         
-        // 7. Esperar todas las promesas y filtrar nulos
-        const signersData = await Promise.all(signersPromises);
-        const validSigners = signersData.filter((s): s is SignerInfo => s !== null);
+        logger.info(`Procesados ${validSigners.length} firmantes válidos para contrato ${contractId}`);
         
-        logger.info(`Recuperados ${validSigners.length} firmantes válidos para contrato ${contractId}`);
-        
-        // 8. Devolver datos completos
+        // 7. Devolver datos completos
         return {
           contract: {
             id: contractId,

@@ -4,9 +4,9 @@ import jwt from 'jsonwebtoken';
 import { headers } from 'next/headers'; // Para forzar dinamismo
 
 // --- Importar Servicios y Tipos ---
-import { getSignerAndContractData } from '@/services/notion'; // Tu función para obtener datos
+import { unifiedNotion, type Signer, type Contract } from '@/services/notion-unified';
 // Importa los tipos necesarios desde tu archivo centralizado
-import type { SignerAndContractDataResult, SignatureClientProps } from '@/lib/types';
+import type { SignatureClientProps } from '@/lib/types';
 
 // --- Importar el Componente Cliente ---
 import SignatureClientComponent from './SignatureClientComponent'; // Importa el componente cliente
@@ -63,7 +63,7 @@ export default async function SignPage({ params }: SignPageProps) {
     // En Next.js 15, params debe ser awaited
     const { token } = await params;
     let tokenPayload: SignatureTokenPayload | null = null;
-    let initialData: SignerAndContractDataResult | null = null;
+    let initialData: { signer: Signer; contract: Contract } | null = null;
     let errorMessage: string | null = null;
 
     // --- 1. Verificar Token ---
@@ -81,7 +81,7 @@ export default async function SignPage({ params }: SignPageProps) {
     // --- 2. Obtener Datos de Notion (Solo si el Token es Válido) ---
     if (tokenPayload) {
         try {
-            initialData = await getSignerAndContractData(tokenPayload.signerId, tokenPayload.contractId);
+            initialData = await unifiedNotion.getSignerAndContract(tokenPayload.signerId, tokenPayload.contractId);
             if (!initialData) {
                 errorMessage = "No se pudieron encontrar los datos del contrato o firmante asociados a este enlace.";
             } else if (initialData.signer.signedAt) {
