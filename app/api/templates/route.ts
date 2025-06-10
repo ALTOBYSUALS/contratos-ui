@@ -2,7 +2,7 @@
 
 import { NextResponse } from 'next/server';
 // --- USA RUTA RELATIVA CORRECTA ---
-import { obtenerPlantillas } from '@/services/notion';
+import { unifiedNotion } from '@/services/notion-unified';
 // ---------------------------------
 
 // Handler para peticiones GET a /api/templates
@@ -10,7 +10,7 @@ export async function GET() {
   console.log("[API /api/templates] Recibida petición GET");
   try {
     // Llama a la función centralizada para obtener las plantillas
-    const templates = await obtenerPlantillas();
+    const templates = await unifiedNotion.getTemplates();
 
     // Devuelve la respuesta JSON obtenida del servicio
     return NextResponse.json(templates);

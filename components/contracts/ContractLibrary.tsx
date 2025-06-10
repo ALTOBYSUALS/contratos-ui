@@ -39,7 +39,8 @@ import {
     ArrowLeft, Library, Send, CheckCircle, Users, Edit2, Plus, Settings2,
     Code, Quote, Underline, ImagePlus, Loader2, RefreshCw, MoreVertical, PenTool, 
     ChevronDown, Check, AlignLeft, AlignCenter, AlignRight, Link, Clipboard, 
-    Heading1, Heading2, Image, FileText, Calendar, MapPin, Settings, User, RotateCw
+    Heading1, Heading2, Image, FileText, Calendar, MapPin, Settings, User, RotateCw,
+    Eye
 } from "lucide-react";
 // -----------------------
 
@@ -51,6 +52,7 @@ import React, { useState, useRef, useEffect, useCallback, ChangeEvent, useMemo }
 import dynamic from 'next/dynamic';
 import SentContractsList from './sent/SentContractsList';
 import { CreateContractModal } from './CreateContractModal'; // Importamos el modal
+import ContractGenerator from './ContractGenerator'; // 🎯 NUEVO GENERADOR
 
 // Custom debounce implementation to replace lodash.debounce
 function debounce<F extends (...args: any[]) => any>(func: F, waitFor: number) {
@@ -68,15 +70,23 @@ function debounce<F extends (...args: any[]) => any>(func: F, waitFor: number) {
 
 // --- CORRECCIÓN: Definir la constante aquí ---
 const INITIAL_GENERAL_DATA: GeneralContractData = {
-    template_id: "", // Correcto, es interno, no un placeholder visible
-    trackTitle: "",      // Corresponde a [trackTitle]
-    fecha: "",           // Corresponde a [Fecha]
-    lugarDeFirma: "",    // Corresponde a [LugarDeFirma]
-    jurisdiction: "",    // Corresponde a [Jurisdiccion]
-    areaArtistica: "",   // Corresponde a [AreaArtistica]
-    porcentajeComision: "", // Corresponde a [PorcentajeComision] (considerar si debe ser string o number)
-    duracionContrato: "",// Corresponde a [DuracionContrato]
-    periodoAviso: "",    // Corresponde a [PeriodoAviso]
+    template_id: "", // Interno, no es placeholder
+    
+    // ✅ CAMPOS QUE EXISTEN EN LOS CONTRATOS REALES:
+    fecha: "",           // → [FechaContrato] 
+    areaArtistica: "",   // → [AreaArtistica]
+    porcentajeComision: "", // → [PorcentajeComision]
+    duracionContrato: "", // → [DuracionContrato]
+    periodoAviso: "",    // → [PeriodoAviso]
+    
+    // 🔧 CAMPOS ADICIONALES ÚTILES:
+    lugarDeFirma: "",    // → [LugarDeFirma] (para firmas)
+    jurisdiction: "",    // → [Jurisdiccion] (para aspectos legales)
+    trackTitle: "",      // → [trackTitle] (para obras específicas)
+    
+    // 💰 CAMPOS FINANCIEROS ADICIONALES:
+    montoFee: "",        // → [MontoFee] (monto de comisión)
+    fechaEntrega: "",    // → [FechaEntrega] (fecha de entrega)
 };
 
 // --- También define el estado inicial para el formulario de nuevo cliente ---
@@ -111,17 +121,59 @@ const INITIAL_NEW_TEMPLATE_STATE: Partial<Template> = {
 };
 
 const createClientObject = (data: Record<string, any>, idOverride?: string): Client => { // Manteniendo any aquí, ya que ESLint está en 'warn'
+    // 🔍 DEBUG: Ver qué datos llegan a createClientObject
+    console.log('🔍 [createClientObject] Datos entrantes:', {
+        id: data.id,
+        firstName: data.firstName,
+        lastName: data.lastName,
+        FullName: data.FullName,
+        email: data.email,
+        role: data.role,
+        allKeys: Object.keys(data)
+    });
+    
     const firstName = data.firstName?.trim() || "";
     const lastName = data.lastName?.trim() || "";
-    let calculatedFullName = `${firstName} ${lastName}`.trim();
-    // Fallbacks for name calculation
-    if (!calculatedFullName && data.FullName) calculatedFullName = data.FullName;
-    if (!calculatedFullName && data.name) calculatedFullName = data.name;
-    if (!calculatedFullName && data.labelName) calculatedFullName = data.labelName; // Use label name if person name missing
-    if (!calculatedFullName && data.publisherName) calculatedFullName = data.publisherName; // Use publisher name
+    
+    // 🔧 LÓGICA MEJORADA: Manejo robusto de nombres
+    let calculatedFullName = '';
+    
+    // Prioridad 1: Si tenemos ambos campos separados
+    if (firstName && lastName) {
+        calculatedFullName = `${firstName} ${lastName}`;
+    }
+    // Prioridad 2: Si tenemos FullName desde la API (ya calculado en Notion service)
+    else if (data.FullName?.trim()) {
+        calculatedFullName = data.FullName.trim();
+    }
+    // Prioridad 3: Si solo tenemos uno de los campos
+    else if (firstName) {
+        calculatedFullName = firstName;
+    }
+    else if (lastName) {
+        calculatedFullName = lastName;
+    }
+    // Prioridad 4: Otros campos de nombre alternativos
+    else if (data.name?.trim()) {
+        calculatedFullName = data.name.trim();
+    }
+    else if (data.labelName?.trim()) {
+        calculatedFullName = data.labelName.trim();
+    }
+    else if (data.publisherName?.trim()) {
+        calculatedFullName = data.publisherName.trim();
+    }
 
     // Ensure name has a fallback if everything else is empty
     const displayName = calculatedFullName || data.email || `Cliente ${data.id || 'Desconocido'}`;
+    
+    // 🔍 DEBUG: Ver el resultado del cálculo de nombres
+    console.log('🔍 [createClientObject] Resultado del cálculo:', {
+        email: data.email,
+        calculatedFullName,
+        displayName,
+        finalFullName: calculatedFullName || displayName
+    });
 
     return {
         id: idOverride || data.id || `client-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
@@ -131,6 +183,7 @@ const createClientObject = (data: Record<string, any>, idOverride?: string): Cli
         phone: data.phone || undefined,
         role: data.role || undefined,
         publisherIpi: data.publisherIpi || undefined,
+        managementSociety: data.managementSociety || undefined,
         dateOfBirth: data.dateOfBirth || undefined,
         passport: data.passport || undefined,
         expirationDate: data.expirationDate || undefined,
@@ -289,7 +342,10 @@ const ContractLibrary = () => { // <--- Inicio del componente
                 let sentContractsData: SentContract[] = [];
                 
                 try {
-                    templatesData = await templatesRes.json();
+                    const rawTemplatesData = await templatesRes.json();
+                    console.log('🔍 RAW TEMPLATES FROM API:', rawTemplatesData);
+                    
+                    templatesData = rawTemplatesData;
                     // Filtrar para eliminar elementos null/undefined o con propiedades incorrectas
                     templatesData = templatesData.filter(t => 
                         t && typeof t === 'object' && 
@@ -298,6 +354,8 @@ const ContractLibrary = () => { // <--- Inicio del componente
                         // Si no hay título, establecer uno por defecto
                         (t.title = t.title || "Sin título") !== ""
                     );
+                    
+                    console.log('🔍 FILTERED TEMPLATES:', templatesData.length, templatesData);
                 } catch (e) {
                     console.error("Error parsing templates:", e);
                     templatesData = [];
@@ -348,8 +406,58 @@ const ContractLibrary = () => { // <--- Inicio del componente
                     }
                 };
 
+                // 🎯 AGREGAR TEMPLATE HARDCODEADO COMO FALLBACK
+                const hardcodedTemplate: Template = {
+                    id: 'hardcoded-template-001',
+                    title: 'Template de Prueba (Hardcoded)',
+                    category: 'Representación',
+                    description: 'Template de prueba para verificar que el sistema funciona correctamente',
+                    content: `<div class="contract-document">
+<h1 class="title">CONTRATO DE REPRESENTACIÓN ARTÍSTICA</h1>
+<h2 class="subtitle">[trackTitle]</h2>
+
+<div class="contract-info">
+<table style="width: 100%;">
+<tr>
+<td><strong>FECHA:</strong><br>[Fecha]</td>
+<td><strong>LUGAR:</strong><br>[LugarDeFirma]</td>
+<td><strong>JURISDICCIÓN:</strong><br>[Jurisdiccion]</td>
+</tr>
+</table>
+</div>
+
+<h3>REUNIDOS</h3>
+<p>De una parte, <strong>[ManagerFullName]</strong>, mayor de edad, con D.N.I./Pasaporte <em>[ManagerPassport]</em>, domiciliado en <em>[ManagerAddress]</em>, con correo electrónico <em>[ManagerEmail]</em>, actuando en calidad de REPRESENTANTE.</p>
+
+<p>De otra parte, <strong>[ArtistFullName]</strong>, mayor de edad, con D.N.I./Pasaporte <em>[ArtistPassport]</em>, domiciliado en <em>[ArtistAddress]</em>, con correo electrónico <em>[ArtistEmail]</em>, actuando en calidad de ARTISTA.</p>
+
+<h3>PRIMERA. OBJETO DEL CONTRATO</h3>
+<p>El presente contrato tiene por objeto establecer las condiciones por las que <strong>[ManagerFullName]</strong> representará a <strong>[ArtistFullName]</strong> en el ámbito de <em>[AreaArtistica]</em>.</p>
+
+<h3>SEGUNDA. PARTICIPANTES DEL CONTRATO</h3>
+<p>Los participantes de este contrato son:</p>
+[ListaColaboradores]
+
+<h3>TERCERA. REPARTO DE BENEFICIOS</h3>
+<p>Los beneficios se repartirán de la siguiente forma:</p>
+[ListaColaboradoresConPorcentaje]
+
+<h3>CUARTA. COMISIÓN</h3>
+<p>El Artista pagará al Representante una comisión del <strong>[PorcentajeComision]%</strong> sobre todos los ingresos brutos.</p>
+
+<h3>QUINTA. DURACIÓN Y TERMINACIÓN</h3>
+<p>Este contrato tendrá una duración de <strong>[DuracionContrato]</strong>. Cualquiera de las partes podrá terminarlo con un preaviso de <strong>[PeriodoAviso]</strong>.</p>
+
+<h3>FIRMAS</h3>
+[Firmas]
+</div>`
+                };
+                
+                // Combinar templates de Notion con el hardcodeado
+                const allTemplates = [hardcodedTemplate, ...templatesData];
+                
                 // Actualiza estados con manejo de errores
-                setTemplates(safeSort(templatesData, (a, b) => 
+                setTemplates(safeSort(allTemplates, (a, b) => 
                     ((a?.title || "").toLowerCase().localeCompare((b?.title || "").toLowerCase()))
                 ));
                 
@@ -365,6 +473,30 @@ const ContractLibrary = () => { // <--- Inicio del componente
                     templates: templatesData.length, 
                     clients: clientsDataProcessed.length, 
                     sent: sentContractsData.length 
+                });
+                
+                // 🔍 DEBUG ESPECÍFICO PARA TEMPLATES
+                console.log('📋 TEMPLATES CARGADOS:', {
+                    count: templatesData.length,
+                    titles: templatesData.map(t => t.title),
+                    firstTemplate: templatesData[0] ? {
+                        id: templatesData[0].id,
+                        title: templatesData[0].title,
+                        hasContent: !!templatesData[0].content,
+                        contentLength: templatesData[0].content?.length || 0
+                    } : null
+                });
+                
+                // 🔍 DEBUG ESPECÍFICO PARA TEMPLATES
+                console.log('📋 TEMPLATES CARGADOS:', {
+                    count: templatesData.length,
+                    titles: templatesData.map(t => t.title),
+                    firstTemplate: templatesData[0] ? {
+                        id: templatesData[0].id,
+                        title: templatesData[0].title,
+                        hasContent: !!templatesData[0].content,
+                        contentLength: templatesData[0].content?.length || 0
+                    } : null
                 });
 
             } catch (error: unknown) { // <-- Catch corregido con unknown
@@ -391,6 +523,47 @@ const ContractLibrary = () => { // <--- Inicio del componente
         [selectedParticipants, participantPercentages]
     );
 
+    // Helper to ensure content is basic HTML (convert Markdown to HTML)
+    const ensureHtmlContent = (content: string): string => {
+        // Si ya es HTML (contiene tags HTML), devolverlo tal cual
+        if (content.includes('<') && content.includes('>')) {
+            return content;
+        }
+        
+        // Si es Markdown o texto plano, convertirlo a HTML
+        let htmlContent = content;
+        
+        // Convertir encabezados Markdown
+        htmlContent = htmlContent.replace(/^### (.*$)/gim, '<h3>$1</h3>');
+        htmlContent = htmlContent.replace(/^## (.*$)/gim, '<h2>$1</h2>');
+        htmlContent = htmlContent.replace(/^# (.*$)/gim, '<h1>$1</h1>');
+        
+        // Convertir negritas
+        htmlContent = htmlContent.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+        
+        // Convertir listas
+        htmlContent = htmlContent.replace(/^\- (.+)$/gim, '<li>$1</li>');
+        
+        // Envolver listas en <ul>
+        htmlContent = htmlContent.replace(/(<li>.*<\/li>\n?)+/g, (match) => {
+            return '<ul>' + match + '</ul>';
+        });
+        
+        // Convertir saltos de línea dobles en párrafos
+        const paragraphs = htmlContent.split('\n\n');
+        htmlContent = paragraphs
+            .map(para => {
+                // Si no es un elemento HTML ya (h1, ul, etc), envolverlo en <p>
+                if (!para.trim().startsWith('<')) {
+                    return '<p>' + para.replace(/\n/g, '<br>') + '</p>';
+                }
+                return para;
+            })
+            .join('\n');
+            
+        return htmlContent;
+    };
+
     // Función principal para reemplazar placeholders en el contenido del contrato
     const applyAllDataToContent = useCallback(() => {
         console.log('--- applyAllDataToContent: INICIO ---'); 
@@ -398,27 +571,57 @@ const ContractLibrary = () => { // <--- Inicio del componente
         let baseContent = '';
         
         // Orden de prioridad para la fuente del contenido
-        if (step === 2 && editorRef.current) {
-            // Prioridad #1: El contenido actual del div editable
+        if (step === 2 && editorRef.current && editorRef.current.innerHTML.trim()) {
+            // Prioridad #1: El contenido actual del div editable (si no está vacío)
             baseContent = editorRef.current.innerHTML;
             console.log('>>> Usando HTML del editor (prioridad #1)');
-        } 
-        else if (editedContent) {
-            // Prioridad #2: El estado editedContent
-            baseContent = editedContent;
+        }
+        else if (editedContent && editedContent.trim()) {
+            // Prioridad #2: El estado editedContent (si no está vacío)
+             baseContent = editedContent;
             console.log('>>> Usando editedContent (prioridad #2)');
         }
-        else if (selectedContract?.content) {
-            // Prioridad #3: Contenido original de la plantilla
+        else if (selectedContract?.content && selectedContract.content.trim()) {
+            // Prioridad #3: Contenido original de la plantilla (si no está vacío)
             baseContent = selectedContract.content;
             console.log('>>> Usando plantilla original (prioridad #3)');
         }
         else {
-            console.log('>>> CRITICAL: No base content source could be determined.');
-            console.log('>>> Final Source Determined: None');
-            console.log('<<< BASE CONTENT BEFORE REPLACE >>>: ', baseContent);
-            console.log('>>> BASE CONTENT IS EMPTY OR WHITESPACE! Returning empty string.');
-            return '';
+            console.log('>>> WARNING: No base content source could be determined.');
+            console.log('>>> Estado actual:', {
+                step,
+                hasEditor: !!editorRef.current,
+                editorContent: editorRef.current?.innerHTML?.length || 0,
+                editedContentLength: editedContent?.length || 0,
+                selectedContractContent: selectedContract?.content?.length || 0
+            });
+            
+            // 🔍 DEBUG COMPLETO del template seleccionado
+            console.log('🔍 TEMPLATE DEBUG:', {
+                selectedContract,
+                hasSelectedContract: !!selectedContract,
+                contentExists: !!selectedContract?.content,
+                contentLength: selectedContract?.content?.length || 0,
+                contentPreview: selectedContract?.content?.substring(0, 200) + '...' || 'NO CONTENT'
+            });
+            
+            // 🔍 DEBUG COMPLETO del template seleccionado
+            console.log('🔍 TEMPLATE DEBUG:', {
+                selectedContract,
+                hasSelectedContract: !!selectedContract,
+                contentExists: !!selectedContract?.content,
+                contentLength: selectedContract?.content?.length || 0,
+                contentPreview: selectedContract?.content?.substring(0, 200) + '...' || 'NO CONTENT'
+            });
+            
+            // En lugar de retornar vacío, intentar usar cualquier contenido disponible
+            if (selectedContract?.content) {
+                baseContent = selectedContract.content;
+                console.log('>>> FALLBACK: Usando plantilla original como último recurso');
+            } else {
+                console.log('>>> CRITICAL: No content available at all, returning empty string.');
+                return '';
+            }
         }
         
         // Si llegamos aquí, hay contenido base para procesar
@@ -435,29 +638,67 @@ const ContractLibrary = () => { // <--- Inicio del componente
                 }).replace(/\//g, '-')
                 : '';
                 
-            // Aplicar reemplazos de datos generales
+            // Aplicar reemplazos de datos generales - ALINEADOS CON CONTRATOS REALES
             updatedContent = updatedContent
-                .replace(/\[trackTitle\]/gi, generalData.trackTitle || '')
-                .replace(/\[Fecha\]/gi, formattedFecha)
-                .replace(/\[LugarDeFirma\]/gi, generalData.lugarDeFirma || '')
-                .replace(/\[Jurisdiccion\]/gi, generalData.jurisdiction || '')
+                // ✅ Placeholders que EXISTEN en los contratos:
+                .replace(/\[FechaContrato\]/gi, formattedFecha)
                 .replace(/\[AreaArtistica\]/gi, generalData.areaArtistica || '')
                 .replace(/\[PorcentajeComision\]/gi, generalData.porcentajeComision?.toString() || '')
                 .replace(/\[DuracionContrato\]/gi, generalData.duracionContrato || '')
-                .replace(/\[PeriodoAviso\]/gi, generalData.periodoAviso || '');
+                .replace(/\[PeriodoAviso\]/gi, generalData.periodoAviso || '')
+                
+                // 🎵 PLACEHOLDERS DE OBRA/TRACK (de las imágenes):
+                .replace(/\[TituloObra\]/gi, generalData.trackTitle || '')
+                .replace(/\[trackTitle\]/gi, generalData.trackTitle || '')
+                
+                // 💰 PLACEHOLDERS FINANCIEROS (de las imágenes):
+                .replace(/\[MontoFee\]/gi, generalData.montoFee?.toString() || '')
+                .replace(/\[PorcentajeRegalias\]/gi, generalData.porcentajeComision?.toString() || '')
+                
+                // 📅 PLACEHOLDERS DE FECHAS (de las imágenes):
+                .replace(/\[FechaEntrega\]/gi, generalData.fechaEntrega || formattedFecha)
+                .replace(/\[Fecha\]/gi, formattedFecha)
+                
+                // 🔧 Placeholders adicionales útiles:
+                .replace(/\[LugarDeFirma\]/gi, generalData.lugarDeFirma || '')
+                .replace(/\[Jurisdiccion\]/gi, generalData.jurisdiction || '');
         }
         
         // --- REEMPLAZOS DE PARTICIPANTES ---
-        // Primero encontrar participantes específicos por rol
-        const manager = clients.find(client => 
-            selectedParticipants.includes(client.email) && 
-            (client.role?.toLowerCase() === 'manager' || client.role?.toLowerCase() === 'representante')
-        );
+        const selectedClients = clients.filter(client => selectedParticipants.includes(client.email));
         
-        const artist = clients.find(client => 
-            selectedParticipants.includes(client.email) && 
-            (client.role?.toLowerCase() === 'artista' || client.role?.toLowerCase() === 'artist')
-        );
+        // 🎯 ENFOQUE FLEXIBLE: Usar el primer participante como Manager y segundo como Artist
+        // Si no hay roles específicos, usar orden de selección
+        const manager = selectedClients.find(client => 
+            client.role?.toLowerCase() === 'manager' || 
+            client.role?.toLowerCase() === 'representante' ||
+            client.role?.toLowerCase() === 'producer' ||
+            client.role?.toLowerCase() === 'productor'
+        ) || selectedClients[0]; // ← FALLBACK: usar el primero si no hay manager
+        
+        // 🎨 ARTISTA: Buscar con rol específico, pero NUNCA el mismo que el manager
+        const artist = selectedClients.find(client => 
+            client !== manager && (  // ← IMPORTANTE: No puede ser el mismo que el manager
+                client.role?.toLowerCase() === 'artista' || 
+                client.role?.toLowerCase() === 'artist'
+            )
+        ) || selectedClients.find(c => c !== manager) || manager; // ← FALLBACK: cualquier otro que no sea manager
+        
+        // 🔍 DEBUG: Mostrar qué participantes se seleccionaron
+        console.log('🎯 PARTICIPANTES SELECCIONADOS:', {
+            selectedParticipants,
+            selectedClients: selectedClients.map(c => ({ name: c.FullName, email: c.email, role: c.role })),
+            manager: manager ? { name: manager.FullName, email: manager.email, role: manager.role } : null,
+            artist: artist ? { name: artist.FullName, email: artist.email, role: artist.role } : null,
+            totalClientes: selectedClients.length,
+            roles: selectedClients.map(c => c.role),
+            esElMismoManagerYArtist: manager === artist,
+            placeholders: {
+                tieneListaColaboradores: updatedContent.includes('[ListaColaboradores]'),
+                tieneListaConPorcentaje: updatedContent.includes('[ListaColaboradoresConPorcentaje]'),
+                tieneFirmas: updatedContent.includes('[Firmas]')
+            }
+        });
         
         // Aplicar datos del manager si existe
         if (manager) {
@@ -466,7 +707,14 @@ const ContractLibrary = () => { // <--- Inicio del componente
                 .replace(/\[ManagerPassport\]/gi, manager.passport || '')
                 .replace(/\[ManagerAddress\]/gi, manager.address || '')
                 .replace(/\[ManagerEmail\]/gi, manager.email || '')
-                .replace(/\[ManagerPhone\]/gi, manager.phone || '');
+                .replace(/\[ManagerPhone\]/gi, manager.phone || '')
+                // También reemplazar los nombres en español que usa el contrato
+                .replace(/\[NombreRepresentante\]/gi, manager.FullName || '')
+                .replace(/\[NombreProductor\]/gi, manager.FullName || '')  // ← NUEVO: placeholder de imagen
+                .replace(/\[RepresentanteNombre\]/gi, manager.FullName || '')
+                .replace(/\[RepresentanteDireccion\]/gi, manager.address || '')
+                .replace(/\[RepresentanteEmail\]/gi, manager.email || '')
+                .replace(/\[RepresentanteTelefono\]/gi, manager.phone || '');
         }
         
         // Aplicar datos del artista si existe
@@ -476,14 +724,33 @@ const ContractLibrary = () => { // <--- Inicio del componente
                 .replace(/\[ArtistPassport\]/gi, artist.passport || '')
                 .replace(/\[ArtistAddress\]/gi, artist.address || '')
                 .replace(/\[ArtistEmail\]/gi, artist.email || '')
-                .replace(/\[ArtistPhone\]/gi, artist.phone || '');
+                .replace(/\[ArtistPhone\]/gi, artist.phone || '')
+                // También reemplazar los nombres en español que usa el contrato
+                .replace(/\[NombreArtista\]/gi, artist.FullName || '')
+                .replace(/\[ArtistaNombre\]/gi, artist.FullName || '')
+                .replace(/\[ArtistaDireccion\]/gi, artist.address || '')
+                .replace(/\[ArtistaEmail\]/gi, artist.email || '')
+                .replace(/\[ArtistaTelefono\]/gi, artist.phone || '');
         }
         
         // --- REEMPLAZOS GENÉRICOS PARA TODOS LOS PARTICIPANTES ---
-        const selectedClients = clients.filter(client => selectedParticipants.includes(client.email));
+        // (selectedClients ya se declaró arriba)
         
         // Generar bloques HTML dinámicos si existen los marcadores
+        console.log('📋 CONTENIDO ANTES DE BUSCAR LISTAS:', {
+            longitud: updatedContent.length,
+            contieneListaColaboradores: updatedContent.includes('[ListaColaboradores]'),
+            contieneListaConPorcentaje: updatedContent.includes('[ListaColaboradoresConPorcentaje]'),
+            primeros500chars: updatedContent.substring(0, 500) + '...',
+            // Buscar específicamente dónde dice "SEGUNDA. PARTICIPANTES"
+            contieneSegunda: updatedContent.includes('SEGUNDA. PARTICIPANTES'),
+            // Ver si hay algo extraño con el formato
+            busquedaDirecta: updatedContent.indexOf('[ListaColaboradores]')
+        });
+        
         if (updatedContent.includes('[ListaColaboradores]')) {
+            console.log('📋 GENERANDO LISTA DE COLABORADORES');
+            console.log('📋 Clientes seleccionados:', selectedClients);
             const listaHTML = selectedClients.map(client => 
                 `<li><strong>${client.FullName}</strong> (${client.role || 'Participante'})</li>`
             ).join('');
@@ -492,7 +759,16 @@ const ContractLibrary = () => { // <--- Inicio del componente
                 ? `<ul>${listaHTML}</ul>` 
                 : '<p><em>No se han seleccionado participantes</em></p>';
                 
+            console.log('📋 Lista generada:', listaFinal);
             updatedContent = updatedContent.replace(/\[ListaColaboradores\]/gi, listaFinal);
+        } else {
+            console.log('⚠️ NO SE ENCONTRÓ [ListaColaboradores] en el template');
+            // Buscar variaciones posibles
+            console.log('🔍 BUSCANDO VARIACIONES:', {
+                espaciosExtra: updatedContent.includes('[ ListaColaboradores ]'),
+                minusculas: updatedContent.includes('[listacolaboradores]'),
+                sinCorchetes: updatedContent.includes('ListaColaboradores')
+            });
         }
         
         // Generar lista de colaboradores con porcentaje
@@ -500,8 +776,8 @@ const ContractLibrary = () => { // <--- Inicio del componente
             const listaHTML = selectedClients.map(client => {
                 const percent = participantPercentages[client.email] || 0;
                 return `<li><strong>${client.FullName}</strong> (${client.role || 'Participante'}): <strong>${percent}%</strong></li>`;
-            }).join('');
-            
+           }).join('');
+           
             const listaFinal = listaHTML 
                 ? `<ul>${listaHTML}</ul>` 
                 : '<p><em>No se han seleccionado participantes</em></p>';
@@ -523,16 +799,41 @@ const ContractLibrary = () => { // <--- Inicio del componente
         }
         
         console.log('--- applyAllDataToContent: FIN ---');
-        return updatedContent;
-    }, [
-        step,
-        editedContent,
-        selectedContract,
-        generalData,
-        selectedParticipants,
+        
+        // Ensure the content is HTML before returning
+        return ensureHtmlContent(updatedContent);
+   }, [
+       step,
+       editedContent,
+       selectedContract,
+       generalData,
+       selectedParticipants,
         clients,
-        participantPercentages
+       participantPercentages
     ]);
+
+    // 🔄 USEEFFECT CRÍTICO: Aplicar cambios en tiempo real al editor
+    useEffect(() => {
+        console.log('🔄 USEEFFECT TIEMPO REAL EJECUTADO:', {
+            step,
+            hasEditor: !!editorRef.current,
+            hasSelectedContract: !!selectedContract,
+            selectedContractId: selectedContract?.id,
+            selectedParticipantsCount: selectedParticipants.length,
+            participantPercentagesCount: Object.keys(participantPercentages).length
+        });
+        
+        if (step === 2 && editorRef.current && selectedContract) {
+            console.log('🔄 CONDICIONES CUMPLIDAS, APLICANDO CONTENIDO...');
+            const updatedContent = applyAllDataToContent();
+            if (updatedContent && updatedContent.trim()) {
+                editorRef.current.innerHTML = updatedContent;
+                console.log('🔄 CONTENIDO ACTUALIZADO EN TIEMPO REAL');
+            } else {
+                console.log('🔄 NO HAY CONTENIDO ACTUALIZADO PARA APLICAR');
+            }
+        }
+    }, [selectedParticipants, participantPercentages, generalData, applyAllDataToContent, step, selectedContract]);
 
     // --- FILTROS ROBUSTOS MEJORADOS ---
     // Para participantes (ya era robusto pero mejoramos la claridad)
@@ -570,7 +871,10 @@ const ContractLibrary = () => { // <--- Inicio del componente
     const isGeneralDataComplete = useMemo(() => {
         // Asegurarse de que generalData existe antes de verificar sus propiedades
         if (!generalData) return false;
-        return !!(generalData.jurisdiction) && !!(generalData.fecha) && !!(generalData.trackTitle);
+        
+        // ✅ NUEVA VALIDACIÓN - Solo validar campos principales obligatorios
+        // Fecha es el único campo realmente crítico porque aparece en todos los contratos
+        return !!(generalData.fecha);
     }, [generalData]);
 
     const hasRemainingPlaceholders = useCallback(() => {
@@ -590,7 +894,11 @@ const ContractLibrary = () => { // <--- Inicio del componente
                 'ManagerFullName','ArtistFullName',
                 'ManagerPassport','ManagerAddress',
                 'ArtistPassport','ArtistAddress',
-                'PorcentajeComision','DuracionContrato','PeriodoAviso'
+                'PorcentajeComision','DuracionContrato','PeriodoAviso',
+                // Agregamos los placeholders en español
+                'FechaContrato','NombreRepresentante','NombreArtista',
+                'RepresentanteNombre','RepresentanteDireccion','RepresentanteEmail','RepresentanteTelefono',
+                'ArtistaNombre','ArtistaDireccion','ArtistaEmail','ArtistaTelefono'
             ];
             // --- FIN ACTUALIZACIÓN ---
 
@@ -840,26 +1148,62 @@ const ContractLibrary = () => { // <--- Inicio del componente
     };
     const handleCheckboxChange = (e: ChangeEvent<HTMLInputElement>, clientEmail: string) => {
         const { checked } = e.target;
-        setSelectedParticipants(prev =>
-            checked ? [...prev, clientEmail] : prev.filter(email => email !== clientEmail)
-        );
-        // If unchecked, remove percentage entry
-        if (!checked) {
-            setParticipantPercentages(prev => {
-                 // --- CORRECCIÓN: Desactivar regla ESLint para '_' ---
-                // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                const { [clientEmail]: _, ...rest } = prev;
-                return rest;
+        
+        if (checked) {
+            // Add participant
+            setSelectedParticipants(prev => {
+                const newParticipants = [...prev, clientEmail];
+                
+                // Auto-distribute percentages equally
+                const equalPercentage = parseFloat((100 / newParticipants.length).toFixed(2));
+                const newPercentages: Record<string, number> = {};
+                
+                // Assign equal percentages to all participants
+                newParticipants.forEach((email, index) => {
+                    // Last participant gets the remainder to ensure total is exactly 100
+                    if (index === newParticipants.length - 1) {
+                        const sumSoFar = Object.values(newPercentages).reduce((sum, val) => sum + val, 0);
+                        newPercentages[email] = parseFloat((100 - sumSoFar).toFixed(2));
+                    } else {
+                        newPercentages[email] = equalPercentage;
+                    }
+                });
+                
+                setParticipantPercentages(newPercentages);
+                return newParticipants;
+            });
+        } else {
+            // Remove participant
+            setSelectedParticipants(prev => {
+                const newParticipants = prev.filter(email => email !== clientEmail);
+                
+                // Redistribute percentages among remaining participants
+                if (newParticipants.length > 0) {
+                    const equalPercentage = parseFloat((100 / newParticipants.length).toFixed(2));
+                    const newPercentages: Record<string, number> = {};
+                    
+                    newParticipants.forEach((email, index) => {
+                        // Last participant gets the remainder to ensure total is exactly 100
+                        if (index === newParticipants.length - 1) {
+                            const sumSoFar = Object.values(newPercentages).reduce((sum, val) => sum + val, 0);
+                            newPercentages[email] = parseFloat((100 - sumSoFar).toFixed(2));
+                        } else {
+                            newPercentages[email] = equalPercentage;
+                        }
+                    });
+                    
+                    setParticipantPercentages(newPercentages);
+                } else {
+                    // No participants left, clear all percentages
+                    setParticipantPercentages({});
+                }
+                
+                return newParticipants;
             });
         }
 
-        // Forzar actualización del contenido cuando cambian los participantes
-        if (editorRef.current) {
-            const updatedContent = applyAllDataToContent();
-            editorRef.current.innerHTML = updatedContent;
-            setEditedContent(updatedContent);
-            console.log("Contenido actualizado tras cambio de participantes");
-        }
+        // NOTA: La actualización del contenido ahora se maneja automáticamente
+        // en el useEffect principal que observa cambios en selectedParticipants
     };
     const handleFontSizeChange = useCallback((size: string) => {
         // Execute the font size command with the selected size
@@ -1358,12 +1702,352 @@ const ContractLibrary = () => { // <--- Inicio del componente
     };
 
     // Wrapper for download buttons (REVISED FOR PDF generation via Backend API)
+    // 🎯 FUNCIÓN PARA GENERAR HTML PROFESIONAL (IGUAL QUE CONTRACTGENERATOR)
+    const generateProfessionalContractHTML = (
+        template: Template,
+        selectedClients: Client[],
+        participantPercentages: Record<string, number>,
+        generalData: GeneralContractData
+    ): string => {
+        // Determinar roles
+        const manager = selectedClients.find(client => 
+            client.role?.toLowerCase() === 'manager' || 
+            client.role?.toLowerCase() === 'representante' ||
+            client.role?.toLowerCase() === 'producer' ||
+            client.role?.toLowerCase() === 'productor'
+        ) || selectedClients[0];
+        
+        const artist = selectedClients.find(client => 
+            client !== manager && (
+                client.role?.toLowerCase() === 'artista' || 
+                client.role?.toLowerCase() === 'artist'
+            )
+        ) || selectedClients.find(c => c !== manager) || manager;
+
+        // Formatear fecha
+        const formattedDate = generalData.fecha 
+            ? new Date(generalData.fecha + 'T00:00:00').toLocaleDateString('es-ES', {
+                day: '2-digit', 
+                month: '2-digit', 
+                year: 'numeric'
+            }).replace(/\//g, '-')
+            : new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '-');
+
+        // Determinar tipo de contrato
+        const getContractTitle = () => {
+            const templateName = template?.title?.toLowerCase() || '';
+            if (templateName.includes('distribu')) return 'CONTRATO DE DISTRIBUCIÓN MUSICAL';
+            if (templateName.includes('represent')) return 'CONTRATO DE REPRESENTACIÓN ARTÍSTICA';
+            if (templateName.includes('produc')) return 'CONTRATO DE PRODUCCIÓN MUSICAL';
+            return 'CONTRATO DE DISTRIBUCIÓN MUSICAL';
+        };
+
+        // Generar tabla de participantes (CON IPI Y SOCIEDAD DE GESTIÓN)
+        const generateParticipantsTable = () => {
+            if (selectedClients.length === 0) return '<tr><td colspan="6" style="text-align: center; padding: 15px; font-style: italic;">No hay participantes seleccionados</td></tr>';
+            
+            return selectedClients.map(client => {
+                const percentage = participantPercentages[client.email] || 0;
+                const role = client.role || 'Participante';
+                const publisherIpi = client.publisherIpi || '---';
+                const managementSociety = client.managementSociety || '---';
+                
+                // Separar nombre y apellido
+                const firstName = client.firstName || '';
+                const lastName = client.lastName || '';
+                
+                // Si no hay firstName/lastName individuales, intentar separar del FullName
+                if (!firstName && !lastName && client.FullName) {
+                    const nameParts = client.FullName.split(' ');
+                    const calculatedFirstName = nameParts[0] || '';
+                    const calculatedLastName = nameParts.slice(1).join(' ') || '';
+                    
+                    return `
+                        <tr>
+                            <td style="padding: 12px; border: 1px solid #ddd; background-color: #f9f9f9;">${calculatedFirstName}</td>
+                            <td style="padding: 12px; border: 1px solid #ddd; background-color: #f9f9f9;">${calculatedLastName}</td>
+                            <td style="padding: 12px; border: 1px solid #ddd; background-color: #f9f9f9;">${role}</td>
+                            <td style="padding: 12px; border: 1px solid #ddd; background-color: #f9f9f9; text-align: center;">${percentage > 0 ? percentage + '%' : 'N/A'}</td>
+                            <td style="padding: 12px; border: 1px solid #ddd; background-color: #f9f9f9; text-align: center; font-family: monospace;">${publisherIpi}</td>
+                            <td style="padding: 12px; border: 1px solid #ddd; background-color: #f9f9f9; text-align: center;">${managementSociety}</td>
+                        </tr>
+                    `;
+                }
+                
+                return `
+                    <tr>
+                        <td style="padding: 12px; border: 1px solid #ddd; background-color: #f9f9f9;">${firstName}</td>
+                        <td style="padding: 12px; border: 1px solid #ddd; background-color: #f9f9f9;">${lastName}</td>
+                        <td style="padding: 12px; border: 1px solid #ddd; background-color: #f9f9f9;">${role}</td>
+                        <td style="padding: 12px; border: 1px solid #ddd; background-color: #f9f9f9; text-align: center;">${percentage > 0 ? percentage + '%' : 'N/A'}</td>
+                        <td style="padding: 12px; border: 1px solid #ddd; background-color: #f9f9f9; text-align: center; font-family: monospace;">${publisherIpi}</td>
+                        <td style="padding: 12px; border: 1px solid #ddd; background-color: #f9f9f9; text-align: center;">${managementSociety}</td>
+                    </tr>
+                `;
+            }).join('');
+        };
+
+        // Generar tabla de tracks
+        const generateTracksTable = () => {
+            const trackTitle = generalData.trackTitle || 'Título de la pista';
+            const artistName = artist?.FullName || 'Artista';
+            
+            return `
+                <tr>
+                    <td style="padding: 12px; border: 1px solid #ddd; background-color: #f9f9f9;">${trackTitle}</td>
+                    <td style="padding: 12px; border: 1px solid #ddd; background-color: #f9f9f9;">${artistName}</td>
+                    <td style="padding: 12px; border: 1px solid #ddd; background-color: #f9f9f9;">ISRC-XXXX-XXXX</td>
+                </tr>
+            `;
+        };
+
+        return `
+        <div class="contract-document" style="
+            font-family: 'Arial', sans-serif; 
+            font-size: 12pt; 
+            line-height: 1.4; 
+            color: #333; 
+            max-width: 210mm; 
+            margin: 0 auto; 
+            padding: 20mm;
+            background: white;
+            box-sizing: border-box;
+        ">
+            
+            <!-- ENCABEZADO PRINCIPAL -->
+            <div style="text-align: center; margin-bottom: 40px; border-bottom: 2px solid #4A90E2; padding-bottom: 20px;">
+                <h1 style="
+                    font-size: 18pt; 
+                    font-weight: bold; 
+                    margin: 0 0 10px 0; 
+                    color: #2C3E50;
+                    letter-spacing: 1px;
+                ">${getContractTitle()}</h1>
+                <div style="font-size: 10pt; color: #7F8C8D; margin-top: 5px;">
+                    Documento Legal • ${formattedDate}
+                </div>
+            </div>
+
+            <!-- INFORMACIÓN BÁSICA -->
+            <div style="margin-bottom: 30px;">
+                <table style="
+                    width: 100%; 
+                    border-collapse: collapse; 
+                    font-size: 11pt;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                ">
+                    <tr style="background-color: #4A90E2; color: white;">
+                        <td style="padding: 12px; font-weight: bold; text-align: center;">Fecha</td>
+                        <td style="padding: 12px; font-weight: bold; text-align: center;">Jurisdicción</td>
+                        <td style="padding: 12px; font-weight: bold; text-align: center;">Duración</td>
+                        <td style="padding: 12px; font-weight: bold; text-align: center;">Lugar de Firma</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 12px; border: 1px solid #ddd; text-align: center; background-color: #f8f9fa;">${formattedDate}</td>
+                        <td style="padding: 12px; border: 1px solid #ddd; text-align: center; background-color: #f8f9fa;">${generalData.jurisdiction || 'Internacional'}</td>
+                        <td style="padding: 12px; border: 1px solid #ddd; text-align: center; background-color: #f8f9fa;">${generalData.duracionContrato || '2 años'}</td>
+                        <td style="padding: 12px; border: 1px solid #ddd; text-align: center; background-color: #f8f9fa;">${generalData.lugarDeFirma || 'Ciudad'}</td>
+                    </tr>
+                </table>
+            </div>
+
+            <!-- TÍTULO DE LA OBRA -->
+            <div style="margin-bottom: 30px;">
+                <h2 style="
+                    font-size: 14pt; 
+                    font-weight: bold; 
+                    margin: 0 0 15px 0; 
+                    color: #2C3E50;
+                    border-left: 4px solid #4A90E2;
+                    padding-left: 15px;
+                ">TÍTULO DE LA OBRA</h2>
+                <div style="
+                    padding: 15px; 
+                    background-color: #f8f9fa; 
+                    border: 1px solid #e9ecef; 
+                    border-radius: 4px;
+                    font-size: 13pt;
+                ">
+                    <strong>${generalData.trackTitle || 'Título de la obra musical'}</strong>
+                </div>
+            </div>
+
+            <!-- PARTICIPANTES -->
+            <div style="margin-bottom: 30px;">
+                <h2 style="
+                    font-size: 14pt; 
+                    font-weight: bold; 
+                    margin: 0 0 15px 0; 
+                    color: #2C3E50;
+                    border-left: 4px solid #4A90E2;
+                    padding-left: 15px;
+                ">PARTICIPANTES</h2>
+                
+                <table style="
+                    width: 100%; 
+                    border-collapse: collapse; 
+                    font-size: 11pt;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                ">
+                    <thead>
+                        <tr style="background-color: #4A90E2; color: white;">
+                            <th style="padding: 12px; font-weight: bold; text-align: center;">Nombre</th>
+                            <th style="padding: 12px; font-weight: bold; text-align: center;">Apellido</th>
+                            <th style="padding: 12px; font-weight: bold; text-align: center;">Rol</th>
+                            <th style="padding: 12px; font-weight: bold; text-align: center;">Porcentaje</th>
+                            <th style="padding: 12px; font-weight: bold; text-align: center;">IPI/CAE</th>
+                            <th style="padding: 12px; font-weight: bold; text-align: center;">Sociedad de Gestión</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${generateParticipantsTable()}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- LISTA DE TRACKS -->
+            <div style="margin-bottom: 40px;">
+                <h2 style="
+                    font-size: 14pt; 
+                    font-weight: bold; 
+                    margin: 0 0 15px 0; 
+                    color: #2C3E50;
+                    border-left: 4px solid #4A90E2;
+                    padding-left: 15px;
+                ">LISTA DE TRACKS</h2>
+                
+                <table style="
+                    width: 100%; 
+                    border-collapse: collapse; 
+                    font-size: 11pt;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                ">
+                    <thead>
+                        <tr style="background-color: #4A90E2; color: white;">
+                            <th style="padding: 12px; font-weight: bold; text-align: center;">Título</th>
+                            <th style="padding: 12px; font-weight: bold; text-align: center;">Artista</th>
+                            <th style="padding: 12px; font-weight: bold; text-align: center;">ISRC</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${generateTracksTable()}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- TÉRMINOS ECONÓMICOS -->
+            <div style="margin-bottom: 40px;">
+                <h2 style="
+                    font-size: 14pt; 
+                    font-weight: bold; 
+                    margin: 0 0 15px 0; 
+                    color: #2C3E50;
+                    border-left: 4px solid #4A90E2;
+                    padding-left: 15px;
+                ">TÉRMINOS ECONÓMICOS</h2>
+                
+                <div style="padding: 20px; background-color: #f8f9fa; border: 1px solid #e9ecef; border-radius: 4px;">
+                    <div style="margin-bottom: 10px;">
+                        <strong>Comisión de Representación:</strong> ${generalData.porcentajeComision || '15'}%
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <strong>Monto Fee:</strong> ${generalData.montoFee ? '$' + generalData.montoFee : 'Por definir'}
+                    </div>
+                    <div>
+                        <strong>Porcentaje de Regalías:</strong> 50%
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECCIÓN DE FIRMAS -->
+            <div style="margin-top: 60px; page-break-inside: avoid;">
+                <h2 style="
+                    font-size: 14pt; 
+                    font-weight: bold; 
+                    margin: 0 0 30px 0; 
+                    color: #2C3E50;
+                    text-align: center;
+                    border-top: 2px solid #4A90E2;
+                    padding-top: 20px;
+                ">FIRMAS</h2>
+                
+                <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 40px;">
+                    <div style="width: 45%; text-align: center;">
+                        <div style="
+                            border-bottom: 2px solid #333; 
+                            height: 60px; 
+                            margin-bottom: 10px;
+                            position: relative;
+                        "></div>
+                        <div style="font-weight: bold; font-size: 11pt; margin-bottom: 5px;">
+                            ${artist?.FullName || 'Artista/Productor'}
+                        </div>
+                        <div style="font-size: 10pt; color: #666;">
+                            Firma del Artista/Productor
+                        </div>
+                        <div style="font-size: 9pt; color: #999; margin-top: 5px;">
+                            Fecha: ________________
+                        </div>
+                    </div>
+                    
+                    <div style="width: 45%; text-align: center;">
+                        <div style="
+                            border-bottom: 2px solid #333; 
+                            height: 60px; 
+                            margin-bottom: 10px;
+                            position: relative;
+                        "></div>
+                        <div style="font-weight: bold; font-size: 11pt; margin-bottom: 5px;">
+                            ${manager?.FullName || 'Representante/Distribuidor'}
+                        </div>
+                        <div style="font-size: 10pt; color: #666;">
+                            Firma del Distribuidor
+                        </div>
+                        <div style="font-size: 9pt; color: #999; margin-top: 5px;">
+                            Fecha: ________________
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PIE DE PÁGINA -->
+            <div style="
+                margin-top: 40px; 
+                padding-top: 20px; 
+                border-top: 1px solid #e9ecef; 
+                text-align: center; 
+                font-size: 9pt; 
+                color: #999;
+            ">
+                <div>Este documento ha sido generado automáticamente el ${formattedDate}</div>
+                <div style="margin-top: 5px;">Contrato legal vinculante - Conservar para sus registros</div>
+            </div>
+        </div>
+        `;
+    };
+
     const handleDownload = async (format: "pdf" | "word" = "pdf") => {
         setIsSubmitting(true);
         const toastId = toast.loading(`Generando ${format}...`, { duration: format === 'pdf' ? 15000 : 5000 });
 
         try {
-            const finalHtmlContent = applyAllDataToContent();
+            // 🎯 NUEVO: Usar el mismo HTML que se muestra en pantalla
+            const selectedClients = clients.filter(client => selectedParticipants.includes(client.email));
+            
+            if (!selectedContract || selectedClients.length === 0) {
+                toast.error("Datos incompletos", { id: toastId, description: "Selecciona un template y participantes." });
+                setIsSubmitting(false);
+                return;
+            }
+            
+            // Generar contenido HTML usando la misma función que ContractGenerator
+            const finalHtmlContent = generateProfessionalContractHTML(
+                selectedContract,
+                selectedClients,
+                participantPercentages,
+                generalData
+            );
+            
             const title = generalData.trackTitle || selectedContract?.title || "documento";
 
             if (!finalHtmlContent?.trim()) {
@@ -1373,18 +2057,61 @@ const ContractLibrary = () => { // <--- Inicio del componente
             }
 
             if (format === "pdf") {
-                // Usar siempre la generación cliente con jsPDF en lugar de la API del servidor
-                console.log(">>> Generating PDF locally with jsPDF for:", title);
-                await downloadPdfContent(finalHtmlContent, title);
-                if (document.getElementById(String(toastId))) {
-                    toast.dismiss(toastId);
+                // 🎯 USAR API DEL SERVIDOR CON PUPPETEER PARA CSS COMPLETO
+                console.log(">>> Generating PDF via server API with Puppeteer for:", title);
+                
+                try {
+                    const response = await fetch('/api/generate-pdf', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            htmlContent: finalHtmlContent,
+                            title: title,
+                            format: 'A4',
+                            landscape: false,
+                            marginTop: '20mm',
+                            marginRight: '20mm',
+                            marginBottom: '20mm',
+                            marginLeft: '20mm',
+                            printBackground: true,
+                            displayHeaderFooter: false,
+                            scale: 0.8
+                        })
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`Error del servidor: ${response.status}`);
+                    }
+
+                    // Descargar el PDF
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `${title.replace(/[^\w\s.-]/g, "").replace(/\s+/g, "_")}.pdf`;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                    
+                    if (document.getElementById(String(toastId))) {
+                        toast.dismiss(toastId);
+                    }
+                    toast.success("PDF generado correctamente");
+                } catch (pdfError) {
+                    console.error("Error with server PDF generation, falling back to jsPDF:", pdfError);
+                    // Fallback a jsPDF si falla la API
+                    await downloadPdfContent(finalHtmlContent, title);
+                    if (document.getElementById(String(toastId))) {
+                        toast.dismiss(toastId);
+                    }
                 }
             } else { // format === "word"
                 console.log(">>> Generating Word document locally...");
                 await downloadWordContent(finalHtmlContent, title);
-                if (document.getElementById(String(toastId))) {
+                 if (document.getElementById(String(toastId))) {
                     toast.dismiss(toastId);
-                }
+                 }
             }
         } catch (error: unknown) {
             console.error(`>>> Error generating ${format}:`, error);
@@ -1566,18 +2293,7 @@ const ContractLibrary = () => { // <--- Inicio del componente
         }
     };
 
-    // Helper to ensure content is basic HTML (wrap plain text in <p>)
-    const ensureHtmlContent = (content: string): string => {
-        const trimmed = content.trim();
-        // Simple check: if it doesn't look like HTML (no tags), wrap lines in <p>
-        if (!trimmed.startsWith("<") && !trimmed.includes("</")) {
-            return trimmed.split("\n")
-                .map((l) => (l.trim() === "" ? "<p><br></p>" : `<p>${l.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>`))
-                .join("");
-        }
-        // Assume it's already HTML (or intended to be)
-        return content;
-    };
+
 
     const handleCreateTemplate = async () => {
         // Validation
@@ -1953,9 +2669,9 @@ const ContractLibrary = () => { // <--- Inicio del componente
             if (!currentFinalContent || !currentFinalContent.trim()) {
                 toast.error("Error Interno", { description: "El contenido final del contrato está vacío. Intenta actualizar manualmente." });
                 console.error(">>> [handleSendContract] ABORTING: Final content is empty after processing.");
-                return;
+                 return;
             }
-            
+
         } catch (error) {
             console.error(">>> [handleSendContract] Error en preparación del contenido:", error);
             toast.error("Error Interno", { description: "Error al procesar el contrato para enviar." });
@@ -2135,22 +2851,77 @@ const ContractLibrary = () => { // <--- Inicio del componente
     // Effect for editor content management & initial data extraction
     useEffect(() => {
         const node = editorRef.current;
-        if (!node || step !== 2 || !selectedContract) return; // Only run in editor step with a contract
-
-        const targetContent = editedContent || selectedContract.content || "";
-
-        if (node.innerHTML !== targetContent) {
-            node.innerHTML = targetContent;
+        if (!node || step !== 2 || !selectedContract) {
+            console.log("🔍 Editor useEffect: Condiciones no cumplidas", {
+                hasNode: !!node,
+                step,
+                hasSelectedContract: !!selectedContract
+            });
+            return;
         }
 
+        const rawContent = editedContent || selectedContract.content || "";
+        
+        if (!rawContent.trim()) {
+            console.log("⚠️ Editor useEffect: No hay contenido para mostrar");
+            return;
+        }
+        
+        const targetContent = ensureHtmlContent(rawContent); // Convert to HTML if needed
+        
+        // Always update if content is different
+        if (node.innerHTML !== targetContent) {
+            node.innerHTML = targetContent;
         node.style.fontFamily = "Arial, sans-serif";
         node.style.fontSize = "11pt";
         node.style.lineHeight = "1.4";
-
-        if (!editedContent && targetContent && !generalData.jurisdiction && !generalData.fecha && !generalData.trackTitle && !generalData.lugarDeFirma) {
-            extractGeneralData(targetContent);
+            console.log("✅ Editor actualizado con contenido HTML:", targetContent.length, "caracteres");
         }
-    }, [step, selectedContract, editedContent, extractGeneralData, generalData]); // Add generalData dependency
+
+        // Extract general data only once when template is first selected
+        if (!editedContent && rawContent && !generalData.jurisdiction && !generalData.fecha && !generalData.trackTitle && !generalData.lugarDeFirma) {
+            extractGeneralData(rawContent);
+        }
+    }, [step, selectedContract, editedContent, generalData, ensureHtmlContent]);
+
+    // Effect específico para asegurar que el editor se monte correctamente
+    useEffect(() => {
+        if (step === 2 && selectedContract && !editorRef.current) {
+            console.log("⏳ Esperando a que el editor se monte...");
+            const checkEditor = setInterval(() => {
+                if (editorRef.current) {
+                    console.log("✅ Editor montado, inicializando contenido...");
+                    const rawContent = editedContent || selectedContract.content || "";
+                    if (rawContent.trim()) {
+                        const targetContent = ensureHtmlContent(rawContent);
+                        editorRef.current.innerHTML = targetContent;
+                        editorRef.current.style.fontFamily = "Arial, sans-serif";
+                        editorRef.current.style.fontSize = "11pt";
+                        editorRef.current.style.lineHeight = "1.4";
+                        console.log("✅ Contenido forzado en editor montado:", targetContent.length, "caracteres");
+                    }
+                    clearInterval(checkEditor);
+                }
+            }, 50);
+            
+            // Cleanup después de 2 segundos como máximo
+            setTimeout(() => clearInterval(checkEditor), 2000);
+            return () => clearInterval(checkEditor);
+        }
+    }, [step, selectedContract, editedContent, ensureHtmlContent]); // Added ensureHtmlContent dependency
+
+    // Effect to update content when participants or data change
+    useEffect(() => {
+        if (step !== 2 || !selectedContract || !editorRef.current) return;
+        
+        // Always update the content, even if no data is selected yet
+        const updatedContent = applyAllDataToContent();
+        if (updatedContent && editorRef.current.innerHTML !== updatedContent) {
+            editorRef.current.innerHTML = updatedContent;
+            setEditedContent(updatedContent);
+            console.log("Contenido actualizado con datos aplicados");
+        }
+    }, [selectedParticipants, participantPercentages, generalData, applyAllDataToContent, step, selectedContract]); // Include all dependencies
 
 
     // Effect for floating toolbar listeners
@@ -2229,27 +3000,8 @@ const ContractLibrary = () => { // <--- Inicio del componente
     // };
 
 
-        // Efecto para actualizar el editor cuando cambian los participantes
-    useEffect(() => {
-        if (step === 2 && editorRef.current && selectedContract) {
-            // Ejecutar después del renderizado para evitar conflictos
-            const timer = setTimeout(() => {
-                try {
-                    const updatedContent = applyAllDataToContent();
-                    // Verificar que editorRef.current sigue existiendo en el momento de la ejecución
-                    if (editorRef.current) {
-                        editorRef.current.innerHTML = updatedContent;
-                        setEditedContent(updatedContent);
-                        console.log("Contenido actualizado automáticamente tras cambio de participantes");
-                    }
-                } catch (error) {
-                    console.error("Error actualizando contenido:", error);
-                }
-            }, 100);
-            
-            return () => clearTimeout(timer);
-        }
-    }, [selectedParticipants, generalData, applyAllDataToContent, step, selectedContract]);
+        // NOTA: Este useEffect ya no es necesario porque el useEffect principal de editor content management
+        // ahora se encarga de todas las actualizaciones cuando cambian los datos
 
     // --- RENDER ---
     // Initial Loading State
@@ -2334,6 +3086,19 @@ const ContractLibrary = () => { // <--- Inicio del componente
                                 <Input type="text" placeholder="Buscar plantillas por título, categoría o descripción..." value={templateSearchQuery} onChange={(e) => setTemplateSearchQuery(e.target.value)} className="pl-10 w-full" disabled={isLoading || isSubmitting}/>
                             </div>
                             {/* Template Grid */}
+                            {/* 🔍 DEBUG: Mostrar información de templates */}
+                            <div className="mb-4 p-3 bg-yellow-50 border rounded-md">
+                                <p className="text-sm text-gray-700">
+                                    🔍 DEBUG: isLoading: {isLoading.toString()}, 
+                                    templates.length: {templates.length}, 
+                                    filteredTemplates.length: {filteredTemplates.length}
+                                </p>
+                                {templates.length > 0 && (
+                                    <p className="text-xs text-gray-600 mt-1">
+                                        Templates: {templates.map(t => t.title).join(', ')}
+                                    </p>
+                                )}
+                            </div>
                             {isLoading && templates.length === 0 ? (
                                 <p className="text-center text-gray-500 mt-10"><Loader2 className="inline-block mr-2 h-5 w-5 animate-spin" />Cargando plantillas...</p>
                              ) : !isLoading && templates.length === 0 ? (
@@ -2352,15 +3117,48 @@ const ContractLibrary = () => { // <--- Inicio del componente
                                         <div
                                             onClick={() => {
                                                 if (!isSubmitting) {
+                                                    console.log('🎯 TEMPLATE SELECCIONADO:', {
+                                                        id: template.id,
+                                                        title: template.title,
+                                                        hasContent: !!template.content,
+                                                        contentLength: template.content?.length || 0,
+                                                        contentPreview: template.content?.substring(0, 100) + '...'
+                                                    });
+                                                    
+                                                    // ORDEN CRÍTICO: Establecer datos primero
                                                     setSelectedContract(template);
-                                                    setEditedContent(template.content); // Reset edited content
-                                                    setStep(2); // Go to editor
-                                                    // Reset sidebar states for the new contract
+                                                    setEditedContent(template.content);
+                                                    
+                                                    // Reset sidebar states
                                                     setSelectedParticipants([]);
                                                     setParticipantPercentages({});
-                                                    setGeneralData(INITIAL_GENERAL_DATA); // Reset general data
-                                                    // Attempt extraction for the newly selected template
+                                                    setGeneralData(INITIAL_GENERAL_DATA);
+                                                    
+                                                    // Extraer datos generales
                                                     extractGeneralData(template.content);
+                                                    
+                                                    // Cambiar a editor
+                                                    setStep(2);
+                                                    
+                                                    // Forzar actualización inmediata del contenido del editor con múltiples intentos
+                                                    let attempts = 0;
+                                                    const maxAttempts = 10;
+                                                    const tryLoadContent = () => {
+                                                        attempts++;
+                                                        if (editorRef.current) {
+                                                            const htmlContent = ensureHtmlContent(template.content);
+                                                            editorRef.current.innerHTML = htmlContent;
+                                                            console.log("✅ Template content loaded into editor:", template.title);
+                                                            console.log("✅ Content length:", htmlContent.length, "characters");
+                                                            console.log("✅ Editor innerHTML length:", editorRef.current.innerHTML.length);
+                                                        } else if (attempts < maxAttempts) {
+                                                            console.log(`⏳ Intento ${attempts}/${maxAttempts}: Editor no disponible, reintentando...`);
+                                                            setTimeout(tryLoadContent, 100);
+                                                        } else {
+                                                            console.log("❌ Editor no disponible después de", maxAttempts, "intentos");
+                                                        }
+                                                    };
+                                                    setTimeout(tryLoadContent, 50);
                                                 }
                                             }}
                                             className="cursor-pointer flex-grow flex flex-col"
@@ -2467,66 +3265,32 @@ className="flex flex-col md:flex-row gap-4 lg:gap-6 flex-grow min-h-0 overflow-h
                 />
              </div>
 
-             {/* 3. Área de Contenido del Editor (CON SCROLL INDEPENDIENTE) */}
-             {/* Este div ocupa el espacio restante y permite scroll interno */}
-             <div className="flex-grow min-h-0 overflow-y-auto bg-white p-4 relative">
-                {/* Barra Flotante (si aún se usa) */}
-               <AnimatePresence>
-                 {showFormattingToolbar && toolbarPosition && (
-                   <motion.div
-                     ref={toolbarRef}
-                     key="floating-toolbar-v6"
-                     initial={{ opacity: 0, scale: 0.9, y: -5 }}
-                     animate={{ opacity: 1, scale: 1, y: 0 }}
-                     exit={{ opacity: 0, scale: 0.9, y: -5 }}
-                     transition={{ duration: 0.1, ease: "easeOut" }}
-                     className="absolute bg-gray-800 text-white rounded-lg shadow-xl px-2 py-1 flex items-center gap-0.5 z-50"
-                     style={{ top: `${toolbarPosition.top}px`, left: `${toolbarPosition.left}px` }}
-                     onMouseDown={(e) => e.preventDefault()}
-                   >
-                     <Button variant="ghost" size="icon" className="h-7 w-7 text-white hover:bg-gray-700" title="Negrita" onClick={() => execCmd("bold")}><Bold size={16} /></Button>
-                     <Button variant="ghost" size="icon" className="h-7 w-7 text-white hover:bg-gray-700" title="Cursiva" onClick={() => execCmd("italic")}><Italic size={16} /></Button>
-                     <Button variant="ghost" size="icon" className="h-7 w-7 text-white hover:bg-gray-700" title="Subrayado" onClick={() => execCmd("underline")}><Underline size={16} /></Button>
-                     <Button variant="ghost" size="icon" className="h-7 w-7 text-white hover:bg-gray-700" title="Tachado" onClick={() => execCmd("strikeThrough")}><Strikethrough size={16} /></Button>
-                   </motion.div>
-                 )}
-               </AnimatePresence>
-
-               {/* Div Editable */}
+             {/* 3. Área de Contenido del Editor - NUEVO GENERADOR DIRECTO */}
+             <div className="flex-grow min-h-0 overflow-y-auto bg-white p-6">
+               {/* 🎯 NUEVO: Generador directo de contratos sin placeholders */}
+               {selectedContract && (
+                 <ContractGenerator
+                   template={selectedContract}
+                   selectedClients={clients.filter(client => selectedParticipants.includes(client.email))}
+                   participantPercentages={participantPercentages}
+                   generalData={generalData}
+                 />
+               )}
+               
+               {/* Fallback si no hay template seleccionado */}
+               {!selectedContract && (
+                 <div className="text-center text-gray-500 py-20">
+                   <Library size={48} className="mx-auto mb-4" />
+                   <p className="text-lg font-semibold">Selecciona un template</p>
+                   <p className="text-sm">Ve a la Biblioteca y elige un template para comenzar</p>
+                 </div>
+               )}
+               
+               {/* Div oculto para mantener compatibilidad con funciones de descarga */}
                <div
                  ref={editorRef}
-                 contentEditable
-                 dangerouslySetInnerHTML={{ __html: editedContent || selectedContract.content || "" }}
-                 onInput={(e) => {
-                    const selection = window.getSelection();
-                    const range = selection?.getRangeAt(0);
-                    
-                    // Actualiza el estado...
-                    
-                    // Restaura la selección
-                    if (selection && range) {
-                      selection.removeAllRanges();
-                      selection.addRange(range);
-                    }
-                 }}
-                 onKeyDown={(e) => {
-                     if (e.key === "Enter" && !e.shiftKey) {
-                         e.preventDefault();
-                         // Add your logic here if needed
-                     }
-                 }}
-                 style={{
-                     // fontFamily: 'Georgia, serif',
-                     fontSize: '12pt',             // Tamaño un poco más grande
-                     lineHeight: '1.6',            // Buen espaciado
-                     paddingBottom: '10vh',        // Espacio extra al final para scroll
-                     wordBreak: "break-word",
-                     overflowWrap: "break-word",
-                 }}
-                 suppressContentEditableWarning
-                 aria-label="Editor de contenido del contrato"
-                 role="textbox"
-                 aria-multiline="true"
+                 style={{ display: 'none' }}
+                 aria-hidden="true"
                />
              </div> {/* Fin Área Contenido Editor */}
 
@@ -2537,15 +3301,12 @@ className="flex flex-col md:flex-row gap-4 lg:gap-6 flex-grow min-h-0 overflow-h
                      <Button variant="secondary" size="sm" onClick={() => handleDownload("pdf")} disabled={isSubmitting || isSending || isFinalizingWithAI || !editorRef.current?.innerHTML?.trim()}> <Download size={16} className="mr-1" /> PDF </Button>
                      <Button variant="secondary" size="sm" onClick={() => handleDownload("word")} disabled={isSubmitting || isSending || isFinalizingWithAI || !editorRef.current?.innerHTML?.trim()}> <Download size={16} className="mr-1" /> Word </Button>
                   </div>
-                  {/* Botones Acción */}
+                  {/* Botón Acción - Solo Enviar Contrato */}
                   <div className="flex gap-2 w-full sm:w-auto justify-end">
-                      <Button variant="outline" size="sm" onClick={handleFinalizeWithAI} disabled={!selectedContract || selectedParticipants.length === 0 || Math.abs(totalPercentage - 100) >= 0.01 || !isGeneralDataComplete || isSubmitting || isSending || isFinalizingWithAI} className="border-purple-500 text-purple-700 hover:bg-purple-50">
-                          {isFinalizingWithAI ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-1 text-yellow-500" size={16} />} Finalizar con IA
-                      </Button>
                       <Button 
-    onClick={handleSendContract}  // <-- CAMBIA ESTO
-    disabled={!isEditorReadyToSend || isSending || isSubmitting || isFinalizingWithAI}
-    className={`bg-green-600 hover:bg-green-700 text-white ${(!isEditorReadyToSend || isSending || isSubmitting || isFinalizingWithAI) ? "opacity-50 cursor-not-allowed" : ""}`} 
+    onClick={handleSendContract}
+    disabled={!isEditorReadyToSend || isSending || isSubmitting}
+    className={`bg-green-600 hover:bg-green-700 text-white ${(!isEditorReadyToSend || isSending || isSubmitting) ? "opacity-50 cursor-not-allowed" : ""}`} 
     title={
         !isEditorReadyToSend
             ? 'Revisa que hayas seleccionado plantilla, participantes, datos generales y eliminado todos los placeholders'
@@ -2553,25 +3314,6 @@ className="flex flex-col md:flex-row gap-4 lg:gap-6 flex-grow min-h-0 overflow-h
     }
 >
     {isSending ? <> <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Enviando… </> : <> <Send className="mr-1" size={16} /> Enviar Contrato </>}
-</Button>
-                      <Button 
-  variant="outline" 
-  size="sm" 
-  onClick={() => {
-    try {
-      const updatedContent = applyAllDataToContent();
-      setEditedContent(updatedContent);
-      if (editorRef.current) {
-        editorRef.current.innerHTML = updatedContent;
-      }
-      toast.success("Contenido actualizado");
-    } catch (error) {
-      console.error("Error actualizando contenido:", error);
-      toast.error("Error al actualizar contenido");
-    }
-  }}
->
-  <RefreshCw size={16} className="mr-1" /> Actualizar
 </Button>
                   </div>
               </CardFooter>
@@ -2671,64 +3413,71 @@ className="flex flex-col md:flex-row gap-4 lg:gap-6 flex-grow min-h-0 overflow-h
                  )}
                  <Separator />
 
-                {/* --- Sección Datos Generales --- */}
+                {/* --- Sección Datos Generales (SIMPLIFICADA) --- */}
                  <section aria-labelledby="general-data-heading-sidebar">
                      <h3 id="general-data-heading-sidebar" className="text-md font-semibold mb-3 flex items-center text-gray-700">
-                         <Settings2 size={18} className="mr-2 text-indigo-600" /> Datos Generales
+                         <Settings2 size={18} className="mr-2 text-indigo-600" /> 📋 Datos Generales
+                         <span className="ml-2 text-xs text-green-600">(Solo campos necesarios)</span>
                      </h3>
-                     <div className="space-y-3">
-                          {/* Lugar de Firma */}
+                     <div className="space-y-4">
+                          
+                          {/* ✅ CAMPOS ESENCIALES */}
+                          
+                          {/* Fecha del Contrato → [FechaContrato] */}
                          <div>
-                             <Label htmlFor="sg-lugar" className="mb-1 block text-xs">Lugar de Firma</Label>
-                             <Input id="sg-lugar" type="text" placeholder="Ej: Madrid, España" value={generalData.lugarDeFirma || ""} onChange={(e) => setGeneralData(p => ({ ...p, lugarDeFirma: e.target.value }))} className="w-full text-sm h-9" disabled={isSubmitting || isSending || isFinalizingWithAI}/>
+                              <Label htmlFor="sg-fecha" className="mb-1 block text-xs font-medium text-gray-700"> 
+                                  📅 Fecha del Contrato<span className="text-red-500 ml-1">*</span> 
+                              </Label>
+                              <Input 
+                                  id="sg-fecha" 
+                                  type="date" 
+                                  value={generalData.fecha} 
+                                  onChange={(e) => setGeneralData(p => ({ ...p, fecha: e.target.value }))} 
+                                  className="w-full text-sm h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500" 
+                                  required 
+                                  aria-required="true" 
+                                  disabled={isSubmitting || isSending || isFinalizingWithAI} 
+                              />
                          </div>
-                         {/* Jurisdicción */}
-                         <div>
-                              <Label htmlFor="sg-jur" className="mb-1 block text-xs"> Jurisdicción<span className="text-red-500 ml-1">*</span> </Label>
-                              <select id="sg-jur" value={generalData.jurisdiction} onChange={(e) => setGeneralData(p => ({ ...p, jurisdiction: e.target.value }))} className="w-full text-sm h-9 border-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white" required aria-required="true" disabled={isSubmitting || isSending || isFinalizingWithAI}>
-                                 <option value="" disabled> Selecciona...</option>
-                                 <option value="España">España</option>
-                                 <option value="México">México</option>
-                                 <option value="Argentina">Argentina</option>
-                                 <option value="Colombia">Colombia</option>
-                                 <option value="Chile">Chile</option>
-                                 <option value="Perú">Perú</option>
-                                 <option value="Estados Unidos">Estados Unidos</option>
-                                 <option value="Reino Unido">Reino Unido</option>
-                                 <option value="Otro">Otro</option>
-                               </select>
-                          </div>
-                          {/* Fecha */}
+                          
+                          {/* Título Track / Obra → [trackTitle] */}
                           <div>
-                              <Label htmlFor="sg-fecha" className="mb-1 block text-xs"> Fecha del Contrato<span className="text-red-500 ml-1">*</span> </Label>
-                              <Input id="sg-fecha" type="date" value={generalData.fecha} onChange={(e) => setGeneralData(p => ({ ...p, fecha: e.target.value }))} className="w-full text-sm h-9" required aria-required="true" disabled={isSubmitting || isSending || isFinalizingWithAI} />
+                              <Label htmlFor="sg-track" className="mb-1 block text-xs font-medium text-gray-700"> 
+                                  🎵 Título Track / Obra<span className="text-red-500 ml-1">*</span>
+                              </Label>
+                              <Input 
+                                  id="sg-track" 
+                                  type="text" 
+                                  placeholder="Ej: Corazón Digital" 
+                                  value={generalData.trackTitle} 
+                                  onChange={(e) => setGeneralData(p => ({ ...p, trackTitle: e.target.value }))} 
+                                  className="w-full text-sm h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500" 
+                                  disabled={isSubmitting || isSending || isFinalizingWithAI} 
+                              />
+                          </div>
+                          
+                          {/* Duración Contrato → [DuracionContrato] */}
+                          <div>
+                              <Label htmlFor="sg-duracion" className="mb-1 block text-xs font-medium text-gray-700">⏱️ Duración Contrato</Label>
+                              <Input 
+                                  id="sg-duracion" 
+                                  type="text" 
+                                  placeholder="Ej: 2 años" 
+                                  value={generalData.duracionContrato || ""} 
+                                  onChange={(e) => setGeneralData(p => ({ ...p, duracionContrato: e.target.value }))} 
+                                  className="w-full text-sm h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500" 
+                                  disabled={isSubmitting || isSending || isFinalizingWithAI}
+                              />
                            </div>
-                           {/* Track Title */}
+                          
+                          {/* Porcentaje Comisión → [PorcentajeComision] */}
                            <div>
-                               <Label htmlFor="sg-track" className="mb-1 block text-xs"> Título Track / Obra<span className="text-red-500 ml-1">*</span> </Label>
-                               <Input id="sg-track" type="text" placeholder="Ej: Corazón Digital" value={generalData.trackTitle} onChange={(e) => setGeneralData(p => ({ ...p, trackTitle: e.target.value }))} className="w-full text-sm h-9" required aria-required="true" disabled={isSubmitting || isSending || isFinalizingWithAI} />
-                           </div>
-                            {/* Área Artística */}
-                           <div>
-                               <Label htmlFor="sg-area" className="mb-1 block text-xs">Área Artística</Label>
-                               <Input id="sg-area" type="text" placeholder="Ej: Música Grabada" value={generalData.areaArtistica || ""} onChange={(e) => setGeneralData(p => ({ ...p, areaArtistica: e.target.value }))} className="w-full text-sm h-9" disabled={isSubmitting || isSending || isFinalizingWithAI}/>
-                           </div>
-                           {/* Duración Contrato */}
-                           <div>
-                               <Label htmlFor="sg-duracion" className="mb-1 block text-xs">Duración Contrato</Label>
-                               <Input id="sg-duracion" type="text" placeholder="Ej: 1 año" value={generalData.duracionContrato || ""} onChange={(e) => setGeneralData(p => ({ ...p, duracionContrato: e.target.value }))} className="w-full text-sm h-9" disabled={isSubmitting || isSending || isFinalizingWithAI}/>
-                           </div>
-                           {/* Periodo Aviso */}
-                           <div>
-                               <Label htmlFor="sg-aviso" className="mb-1 block text-xs\">Periodo Aviso</Label>
-                               <Input id="sg-aviso" type="text" placeholder="Ej: 30 días" value={generalData.periodoAviso || ""} onChange={(e) => setGeneralData(p => ({ ...p, periodoAviso: e.target.value }))} className="w-full text-sm h-9" disabled={isSubmitting || isSending || isFinalizingWithAI}/>
-                           </div>
-                           {/* Porcentaje Comisión */}
-                            <div>
-                                <Label htmlFor="sg-comision" className="mb-1 block text-xs">Porcentaje Comisión (%)</Label>
+                              <Label htmlFor="sg-comision" className="mb-1 block text-xs font-medium text-gray-700">💰 Porcentaje Comisión (%)</Label>
                                 <Input
                                     id="sg-comision"
                                     type="number"
+                                    min="0"
+                                    max="100"
                                     placeholder="Ej: 15"
                                     value={generalData.porcentajeComision || ""}
                                     onChange={(e) => {
@@ -2737,14 +3486,73 @@ className="flex flex-col md:flex-row gap-4 lg:gap-6 flex-grow min-h-0 overflow-h
                                             porcentajeComision: e.target.value 
                                         }));
                                     }}
-                                    className="w-full text-sm h-9"
+                                    className="w-full text-sm h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                                     disabled={isSubmitting || isSending || isFinalizingWithAI}
                                 />
                             </div>
+                          
+                          {/* Monto Fee → [MontoFee] */}
+                          <div>
+                              <Label htmlFor="sg-monto" className="mb-1 block text-xs font-medium text-gray-700">💰 Monto Fee</Label>
+                              <Input 
+                                  id="sg-monto" 
+                                  type="text" 
+                                  placeholder="Ej: €1,500" 
+                                  value={generalData.montoFee?.toString() || ""} 
+                                  onChange={(e) => setGeneralData(p => ({ ...p, montoFee: e.target.value }))} 
+                                  className="w-full text-sm h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500" 
+                                  disabled={isSubmitting || isSending || isFinalizingWithAI}
+                              />
+                          </div>
+                          
+                          {/* Separador */}
+                          <div className="border-t border-gray-200 my-4"></div>
+                          
+                          {/* ⚖️ CAMPOS LEGALES */}
+                          
+                          {/* Lugar de Firma → [LugarDeFirma] */}
+                          <div>
+                              <Label htmlFor="sg-lugar" className="mb-1 block text-xs font-medium text-gray-600">📍 Lugar de Firma</Label>
+                              <Input 
+                                  id="sg-lugar" 
+                                  type="text" 
+                                  placeholder="Ej: Madrid, España" 
+                                  value={generalData.lugarDeFirma || ""} 
+                                  onChange={(e) => setGeneralData(p => ({ ...p, lugarDeFirma: e.target.value }))} 
+                                  className="w-full text-sm h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500" 
+                                  disabled={isSubmitting || isSending || isFinalizingWithAI}
+                              />
+                          </div>
+                          
+                          {/* Jurisdicción → [Jurisdiccion] */}
+                          <div>
+                              <Label htmlFor="sg-jur" className="mb-1 block text-xs font-medium text-gray-600"> 
+                                  ⚖️ Jurisdicción 
+                              </Label>
+                              <select 
+                                  id="sg-jur" 
+                                  value={generalData.jurisdiction} 
+                                  onChange={(e) => setGeneralData(p => ({ ...p, jurisdiction: e.target.value }))} 
+                                  className="w-full text-sm h-10 border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-white" 
+                                  disabled={isSubmitting || isSending || isFinalizingWithAI}
+                              >
+                                  <option value="">Selecciona jurisdicción...</option>
+                                  <option value="España">España</option>
+                                  <option value="México">México</option>
+                                  <option value="Argentina">Argentina</option>
+                                  <option value="Colombia">Colombia</option>
+                                  <option value="Chile">Chile</option>
+                                  <option value="Perú">Perú</option>
+                                  <option value="Estados Unidos">Estados Unidos</option>
+                                  <option value="Reino Unido">Reino Unido</option>
+                                  <option value="Internacional">Internacional</option>
+                              </select>
+                          </div>
+                          
                            {/* Mensaje Validación */}
-                           {!isGeneralDataComplete && selectedParticipants.length > 0 && (
-                               <p role="alert" className="text-xs text-red-600 text-center mt-1">
-                                  Completa los campos requeridos (*).
+                           {(!generalData.fecha || !generalData.trackTitle) && selectedParticipants.length > 0 && (
+                               <p role="alert" className="text-xs text-red-600 text-center mt-2 p-2 bg-red-50 rounded-md">
+                                  ⚠️ Completa los campos obligatorios (*)
                                </p>
                            )}
                      </div>
@@ -2926,6 +3734,23 @@ className="flex flex-col md:flex-row gap-4 lg:gap-6 flex-grow min-h-0 overflow-h
                              <TabsContent value="publisher" className="mt-4 space-y-4">
                                 <div> <Label htmlFor="add-publisherName">Nombre Editorial</Label> <Input id="add-publisherName" name="publisherName" value={newClient.publisherName || ""} onChange={handleClientFormChange} disabled={isSubmitting}/> </div>
                                 <div> <Label htmlFor="add-publisherIpi">IPI / CAE</Label> <Input id="add-publisherIpi" name="publisherIpi" value={newClient.publisherIpi || ""} onChange={handleClientFormChange} placeholder="Número IPI/CAE" disabled={isSubmitting}/> </div>
+                                <div> 
+                                    <Label htmlFor="add-managementSociety">Sociedad de Gestión</Label> 
+                                    <select id="add-managementSociety" name="managementSociety" value={newClient.managementSociety || ""} onChange={handleClientFormChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm bg-white" disabled={isSubmitting}>
+                                        <option value="">Seleccionar Sociedad...</option>
+                                        <option value="SGAE">SGAE (España)</option>
+                                        <option value="ASCAP">ASCAP (USA)</option>
+                                        <option value="BMI">BMI (USA)</option>
+                                        <option value="SESAC">SESAC (USA)</option>
+                                        <option value="GEMA">GEMA (Alemania)</option>
+                                        <option value="SACEM">SACEM (Francia)</option>
+                                        <option value="PRS">PRS (Reino Unido)</option>
+                                        <option value="SIAE">SIAE (Italia)</option>
+                                        <option value="BUMA">BUMA/STEMRA (Países Bajos)</option>
+                                        <option value="SUISA">SUISA (Suiza)</option>
+                                        <option value="OTHER">Otra</option>
+                                    </select>
+                                </div>
                                 <div> <Label htmlFor="add-publisherEmail">Email Editorial</Label> <Input id="add-publisherEmail" name="publisherEmail" type="email" value={newClient.publisherEmail || ""} onChange={handleClientFormChange} disabled={isSubmitting}/> </div>
                             </TabsContent>
                         </Tabs>
@@ -3024,6 +3849,23 @@ className="flex flex-col md:flex-row gap-4 lg:gap-6 flex-grow min-h-0 overflow-h
                              <TabsContent value="publisher" className="mt-4 space-y-4">
                                   <div><Label htmlFor="edit-publisherName">Nombre Editorial</Label><Input id="edit-publisherName" name="publisherName" value={editedClientData.publisherName ?? editingClient.publisherName ?? ''} onChange={handleClientFormChange} disabled={isSubmitting}/></div>
                                   <div><Label htmlFor="edit-publisherIpi">IPI / CAE</Label><Input id="edit-publisherIpi" name="publisherIpi" value={editedClientData.publisherIpi ?? editingClient.publisherIpi ?? ''} onChange={handleClientFormChange} placeholder="Número IPI/CAE" disabled={isSubmitting}/></div>
+                                  <div>
+                                      <Label htmlFor="edit-managementSociety">Sociedad de Gestión</Label>
+                                      <select id="edit-managementSociety" name="managementSociety" value={editedClientData.managementSociety ?? editingClient.managementSociety ?? ''} onChange={handleClientFormChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm bg-white" disabled={isSubmitting}>
+                                          <option value="">Seleccionar Sociedad...</option>
+                                          <option value="SGAE">SGAE (España)</option>
+                                          <option value="ASCAP">ASCAP (USA)</option>
+                                          <option value="BMI">BMI (USA)</option>
+                                          <option value="SESAC">SESAC (USA)</option>
+                                          <option value="GEMA">GEMA (Alemania)</option>
+                                          <option value="SACEM">SACEM (Francia)</option>
+                                          <option value="PRS">PRS (Reino Unido)</option>
+                                          <option value="SIAE">SIAE (Italia)</option>
+                                          <option value="BUMA">BUMA/STEMRA (Países Bajos)</option>
+                                          <option value="SUISA">SUISA (Suiza)</option>
+                                          <option value="OTHER">Otra</option>
+                                      </select>
+                                  </div>
                                   <div><Label htmlFor="edit-publisherEmail">Email Editorial</Label><Input id="edit-publisherEmail" name="publisherEmail" type="email" value={editedClientData.publisherEmail ?? editingClient.publisherEmail ?? ''} onChange={handleClientFormChange} disabled={isSubmitting}/></div>
                                   <div><Label htmlFor="edit-publisherPhone">Teléfono Editorial</Label><Input id="edit-publisherPhone" name="publisherPhone" type="tel" value={editedClientData.publisherPhone ?? editingClient.publisherPhone ?? ''} onChange={handleClientFormChange} disabled={isSubmitting}/></div>
                              </TabsContent>

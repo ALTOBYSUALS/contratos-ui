@@ -105,7 +105,7 @@ class NotionService {
   private readonly PROPERTY_MAP = {
     // Nombres de propiedades exactamente como aparecen en Notion (DB Firmantes)
     titleField: "Nombre Firmante (Title)",
-    emailField: "Email (Email)",
+    emailField: "Email",
     relationField: "Contrato Relacionado",
     dateField: "Fecha Firma (Date)",
     statusField: "Estado Firma (Select)",

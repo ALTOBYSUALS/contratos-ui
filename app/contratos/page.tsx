@@ -3,9 +3,11 @@
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import dynamic from 'next/dynamic';
+import ContractLibrary from '@/components/contracts/ContractLibrary';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 // Importación dinámica para evitar problemas en la carga inicial
-const ContractLibrary = dynamic(
+const ContractLibraryDynamic = dynamic(
   () => import('@/components/contracts/ContractLibrary'),
   { 
     ssr: false,
@@ -72,14 +74,8 @@ export default function ContratosPage() {
   }
 
   return (
-    <main>
-      {showComponent ? (
-        <ContractLibrary />
-      ) : (
-        <div className="text-center p-12">
-          <p>Preparando componente...</p>
-        </div>
-      )}
-    </main>
+    <ErrorBoundary>
+      <ContractLibrary />
+    </ErrorBoundary>
   );
 } 

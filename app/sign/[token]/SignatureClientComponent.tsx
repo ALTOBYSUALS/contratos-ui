@@ -13,12 +13,14 @@ import { Loader2 } from 'lucide-react'; // Icono de carga
 import type { SignatureClientProps } from '@/lib/types'; // Importar desde lib
 
 // Configurar worker de pdf.js (necesario para react-pdf)
-pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.min.mjs',
-  import.meta.url,
-).toString();
-// Alternativa CDN:
-// pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+// Usando CDN para evitar problemas de módulos en Next.js
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+
+// Alternativa local (problemática en Next.js):
+// pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+//   'pdfjs-dist/build/pdf.worker.min.mjs',
+//   import.meta.url,
+// ).toString();
 
 
 export default function SignatureClientComponent({ token, signerName, contractPdfUrl }: SignatureClientProps) {

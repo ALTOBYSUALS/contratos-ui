@@ -38,17 +38,26 @@ const SentContractsList: React.FC<SentContractsListProps> = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
 
-  // Filtrar contratos basado en el término de búsqueda
-  const filteredContracts = contracts.filter(contract => 
-    contract.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (contract.status && contract.status.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
-
-  // Estado del contrato a un color para la badge
-  const getStatusColor = (status: string | undefined) => {
-    if (!status) return 'bg-gray-200 text-gray-700';
+  // Filtrar contratos basado en el término de búsqueda (MÁS ROBUSTO)
+  const safeSearchTerm = (searchTerm || "").toLowerCase();
+  const filteredContracts = contracts.filter(contract => {
+    // Verificar que el contrato y sus propiedades existan antes de filtrar
+    if (!contract) return false;
     
-    switch(status.toLowerCase()) {
+    const titleMatch = (contract.title || "").toLowerCase().includes(safeSearchTerm);
+    const statusMatch = (contract.status || "").toLowerCase().includes(safeSearchTerm);
+    
+    return titleMatch || statusMatch;
+  });
+
+  // Estado del contrato a un color para la badge (MÁS ROBUSTO)
+  const getStatusColor = (status: string | undefined | null) => { // <-- Aceptar null también
+    // Usar fallback seguro para toLowerCase
+    const safeStatus = (status || "").toLowerCase(); 
+    
+    // Eliminar la comprobación redundante de !status aquí
+    
+    switch(safeStatus) {
       case 'firmado':
       case 'signed':
         return 'bg-green-100 text-green-800';
@@ -153,8 +162,8 @@ const SentContractsList: React.FC<SentContractsListProps> = ({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredContracts.map((contract) => (
-                  <TableRow key={contract.id}>
+                {filteredContracts.map((contract, index) => (
+                  <TableRow key={contract.id ? `${contract.id}-${contract.date}` : `contract-${index}`}>
                     <TableCell className="font-medium">{contract.title}</TableCell>
                     <TableCell>{formatDate(contract.date)}</TableCell>
                     <TableCell>

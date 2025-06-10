@@ -60,7 +60,8 @@ export default async function SignPage({ params }: SignPageProps) {
     // Forzar dinamismo leyendo headers (alternativa a export const dynamic)
     headers();
 
-    const { token } = params;
+    // En Next.js 15, params debe ser awaited
+    const { token } = await params;
     let tokenPayload: SignatureTokenPayload | null = null;
     let initialData: SignerAndContractDataResult | null = null;
     let errorMessage: string | null = null;

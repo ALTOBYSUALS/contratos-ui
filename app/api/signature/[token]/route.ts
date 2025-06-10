@@ -14,12 +14,7 @@ import type { SignerAndContractDataResult } from '@/lib/types'; // Importa solo 
 // import type { SignerInfo, ContractInfo } from '@/lib/types'; // Si los usas explícitamente después
 
 // --- Importar Funciones del Servicio Notion ---
-import {
-    getSignerAndContractData,
-    updateSignerRecord,
-    getPendingSignersCount,
-    updateFinalContractStatus
-} from '@/services/notion';
+import { unifiedNotion } from '@/services/notion-unified';
 
 // --- Configuración Inicial ---
 const secret = process.env.JWT_SECRET;
@@ -79,7 +74,10 @@ export async function PATCH(
     request: NextRequest,
     { params }: { params: { token: string } }
 ) {
-    console.log(`[Signature API] Recibida petición PATCH para token: ${params.token ? params.token.substring(0, 10) + '...' : 'NO TOKEN'}`);
+    // En Next.js 15, params debe ser awaited
+    const { token } = await params;
+    
+    console.log(`[Signature API] Recibida petición PATCH para token: ${token ? token.substring(0, 10) + '...' : 'NO TOKEN'}`);
 
     // --- 1. Validar Configuración Crítica ---
     // (Sin cambios respecto a la versión anterior)
@@ -89,14 +87,14 @@ export async function PATCH(
 
     // --- Declarar variables fuera del try ---
     let tokenPayload: SignatureTokenPayload; // No necesita valor inicial si SIEMPRE se asigna o lanza error antes de usar
-    let signerAndContractData: SignerAndContractDataResult | null = null; // Inicializar a null
+    let signerAndContractData: { signer: any; contract: any; } | null = null; // Inicializar a null
 
     try {
         // --- 2. Verificar Token (Ahora lanza error si falla) ---
-        tokenPayload = await verifyToken(params.token); // Asignación directa, si falla, salta al catch
+        tokenPayload = await verifyToken(token); // Asignación directa, si falla, salta al catch
 
         // --- 3. Obtener Datos de Notion ---
-        signerAndContractData = await getSignerAndContractData(tokenPayload.signerId, tokenPayload.contractId);
+        signerAndContractData = await unifiedNotion.getSignerAndContract(tokenPayload.signerId, tokenPayload.contractId);
         if (!signerAndContractData) {
              // Este error ahora significa que Notion no encontró los datos, no que el token falló antes
             console.error(`[Signature API] No se encontraron datos para signerId: ${tokenPayload.signerId}, contractId: ${tokenPayload.contractId}`);
@@ -131,25 +129,59 @@ export async function PATCH(
         const signatureImageBytes = Buffer.from(signatureDataUrl.split(',')[1], 'base64');
         const signatureImage = await pdfDoc.embedPng(signatureImageBytes);
         const pages = pdfDoc.getPages();
-        const pageIndex = signerAndContractData.signer.pageNumber - 1; // 0-indexed
-        if (pageIndex < 0 || pageIndex >= pages.length) { throw new Error("Número de página inválido para la firma."); }
+        
+        // Debug: Información del PDF y firmante
+        console.log(`[Signature API DEBUG] PDF tiene ${pages.length} páginas`);
+        console.log(`[Signature API DEBUG] Firmante quiere firmar en página ${signerAndContractData.signer.pageNumber}`);
+        console.log(`[Signature API DEBUG] Posición: (${signerAndContractData.signer.posX}, ${signerAndContractData.signer.posY})`);
+        
+        // Validación robusta del número de página
+        if (pages.length === 0) {
+            throw new Error("El PDF no contiene páginas válidas.");
+        }
+        
+        let pageIndex = signerAndContractData.signer.pageNumber - 1; // 0-indexed
+        
+        // Auto-corregir si el número de página es inválido
+        if (pageIndex < 0 || pageIndex >= pages.length) { 
+            console.warn(`[Signature API WARNING] Página ${signerAndContractData.signer.pageNumber} inválida para PDF de ${pages.length} páginas. Auto-corrigiendo a página 1.`);
+            pageIndex = 0; // Usar primera página como fallback
+        }
+        
         const page = pages[pageIndex];
-        const { height: pageHeight } = page.getSize();
-        const signatureX = signerAndContractData.signer.posX;
+        if (!page) {
+            throw new Error(`No se pudo obtener la página ${pageIndex + 1} del PDF.`);
+        }
+        
+        const { height: pageHeight, width: pageWidth } = page.getSize();
+        console.log(`[Signature API DEBUG] Página ${pageIndex + 1}: ${pageWidth}x${pageHeight}px`);
+        
+        // Validar coordenadas de firma
+        const signatureX = Math.max(0, Math.min(signerAndContractData.signer.posX, pageWidth - signerAndContractData.signer.signatureWidth));
         const signatureY = pageHeight - signerAndContractData.signer.posY - signerAndContractData.signer.signatureHeight; // Y desde abajo
-        console.log(`[Signature API] Dibujando firma en pág ${pageIndex+1} en (${signatureX}, ${signatureY})`);
-        page.drawImage(signatureImage, { x: signatureX, y: signatureY, width: signerAndContractData.signer.signatureWidth, height: signerAndContractData.signer.signatureHeight });
+        
+        // Asegurar que la firma esté dentro de los límites de la página
+        const finalSignatureY = Math.max(0, Math.min(signatureY, pageHeight - signerAndContractData.signer.signatureHeight));
+        
+        console.log(`[Signature API] Dibujando firma en página ${pageIndex+1} en (${signatureX}, ${finalSignatureY})`);
+        page.drawImage(signatureImage, { 
+            x: signatureX, 
+            y: finalSignatureY, 
+            width: signerAndContractData.signer.signatureWidth, 
+            height: signerAndContractData.signer.signatureHeight 
+        });
+        
         const signedPdfBytes = await pdfDoc.save();
-        console.log(`[Signature API] PDF con firma embebida generado.`);
+        console.log(`[Signature API] PDF con firma embebida generado (${(signedPdfBytes.length / 1024).toFixed(1)} KB).`);
 
         // --- 8. Actualizar Firmante en Notion ---
         console.log(`[Signature API] Actualizando registro del firmante ${tokenPayload.signerId}...`);
-        await updateSignerRecord(tokenPayload.signerId, { signedAt: new Date() }); // ¡Ahora se usa!
+        await unifiedNotion.updateSignerAsSigned(tokenPayload.signerId); // ¡Ahora se usa!
         console.log(`[Signature API] Registro del firmante ${tokenPayload.signerId} actualizado.`);
 
         // --- 9. Verificar si es la Última Firma ---
         console.log(`[Signature API] Verificando firmantes pendientes para contrato ${tokenPayload.contractId}...`);
-        const pendingCount = await getPendingSignersCount(tokenPayload.contractId);
+        const pendingCount = await unifiedNotion.countPendingSigners(tokenPayload.contractId);
         console.log(`[Signature API] Firmantes pendientes: ${pendingCount}`);
 
         if (pendingCount === 0) {
@@ -165,11 +197,10 @@ export async function PATCH(
             console.log("[Signature API] PDF firmado subido a:", signedPdfUrl);
 
             console.log(`[Signature API] Actualizando estado final del contrato ${tokenPayload.contractId}...`);
-            // ¡Llamada a la función importada!
-            await updateFinalContractStatus(tokenPayload.contractId, {
+            // ¡Llamada a la función unificada!
+            await unifiedNotion.finalizeContract(tokenPayload.contractId, {
                 pdfUrl_signed: signedPdfUrl,
-                sha256: finalHash,
-                signedAt: new Date()
+                sha256: finalHash
             });
             console.log(`[Signature API] Contrato ${tokenPayload.contractId} marcado como Firmado.`);
 

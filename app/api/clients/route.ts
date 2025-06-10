@@ -2,14 +2,27 @@
 
 import { NextResponse } from 'next/server';
 // --- USA RUTA RELATIVA CORRECTA ---
-import { listarClientes } from '@/services/notion';
+import { unifiedNotion } from '@/services/notion-unified';
 // ---------------------------------
 
 export async function GET() {
   console.log("[API /api/clients] Recibida petición GET");
   try {
     // Llama a la función centralizada para obtener los clientes
-    const clients = await listarClientes();
+    const clients = await unifiedNotion.getClients();
+
+    // 🔍 DEBUG: Ver qué datos estamos devolviendo
+    console.log("[API /api/clients] Datos que se van a devolver:", {
+      count: clients.length,
+      firstClient: clients[0] ? {
+        id: clients[0].id,
+        FullName: clients[0].FullName,
+        firstName: clients[0].firstName,
+        lastName: clients[0].lastName,
+        email: clients[0].email,
+        role: clients[0].role
+      } : null
+    });
 
     // Devuelve la respuesta JSON obtenida del servicio
     return NextResponse.json(clients);
